@@ -35,13 +35,15 @@ def render_one(template, workdir, outdir, config):
 
     number = config['number']
 
-    infile = config.get('source', 'lesson_{}.md'.format(number))
+    infile_name = config.get('source', 'lesson_{}.md'.format(number))
 
-    outfile = '{}/{}.html'.format(outdir, infile.rsplit('.', 1)[0])
+    infile = str(workdir / infile_name)
+
+    outfile = '{}/{}.html'.format(outdir, infile_name.rsplit('.', 1)[0])
 
     rendered = template.format(
         lesson_number=number,
-        content=render_markdown(number, str(workdir / infile)),
+        content=render_markdown(number, infile),
         lesson_title=config.get('title', 'Python - Kurs {}'.format(number))
     )
 
@@ -92,7 +94,7 @@ def render_all(items, workdir, outdir, config_file):
 
 
 def format_time(t):
-    return '{} seconds'.format(t.days * 24 * 60 * 60 + t.seconds)
+    return '{}.{} seconds'.format(t.days * 24 * 60 * 60 + t.seconds, t.microseconds)
 
 
 def main():
