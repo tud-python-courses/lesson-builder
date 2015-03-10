@@ -4,6 +4,7 @@ import subprocess
 import os
 import json
 import sys
+import argparse
 
 
 build_markdown_ruby_code = """
@@ -12,64 +13,42 @@ require 'github/markdown'
 File.write('{tempfile}', GitHub::Markdown.render(File.read('{file}')))
 """
 
+md_builder_file = 'md_compile.rb'
+
 template_file = 'template.html'
 
 config_file = 'lessons.json'
 
+default_output_dir = 'build'
 
-def _render(filename, lesson_number, lesson_title):
-    tmpfile = filename + '.tmp'
 
-    if os.path.exists(tmpfile):
-        os.remove(tmpfile)
-
-    render_markdown(lesson_number, filename, tmpfile)
-
+def _render(workdir, filename, lesson_number, lesson_title):
+    rendered_markdown = render_markdown(lesson_number, filename)
+    
     with open(template_file) as file:
-
-        with open(tmpfile) as tmpcontent:
-            content = tmpcontent.read()
-
-        os.remove(tmpfile)
-
         template = file.read()
-        return template.format(
-            lesson_number=lesson_number,
-            content=content,
-            lesson_title=lesson_title,
-        )
 
-
-
-
-
-def render_markdown(lesson_number, file, tmpfile):
-    code = build_markdown_ruby_code.format(
-        file=file,
-        tempfile=tmpfile
+    return template.format(
+        lesson_number=lesson_number,
+        content=rendered_markdown,
+        lesson_title=lesson_title,
     )
 
-    ruby_tmp_file_name = 'render_lesson_{}.rb'.format(lesson_number)
 
-    if os.path.exists(ruby_tmp_file_name):
-        os.remove(ruby_tmp_file_name)
-
-    print(code, file=open(ruby_tmp_file_name, mode='w+'))
-
-    subprocess.call(('ruby', ruby_tmp_file_name))
-
-    os.remove(ruby_tmp_file_name)
+def render_markdown(lesson_number, file):
+    return subprocess.check_output(('ruby', md_builder_file, file)).decode('utf-8')
 
 
-def render_one(number, config):
+def render_one(workdir, outdir, number, config):
 
     infile = config.get('source', 'lesson_{}.md'.format(number))
 
-    infile = pathlib.Path(infile)
+    infile = pathlib.Path(workdir) / infile
 
-    outfile = 'build/{}.html'.format(infile.stem)
+    outfile = '{}/{}.html'.format(outdir, infile.stem)
 
     rendered = _render(
+        workdir,
         str(infile),
         number,
         config.get('title', 'Python - Kurs {}'.format(number))
@@ -81,23 +60,43 @@ def render_one(number, config):
 
 
 def main():
-    meta = json.load(open(config_file))
+    parser = argparse.ArgumentParser()
 
-    if len(sys.argv) == 1 or sys.argv[1].lower() == 'all':
+    parser.add_argument('--workdir', '-d', default='.', nargs='?', type=str)
+    parser.add_argument('lessons', nargs='*', type=int)
+    parser.add_argument('--theme_folder', '-t', type=str)
+    parser.add_argument('--output_dir', '-o', default=None, type=str)
+
+    args = parser.parse_args()
+
+    workdir = args.workdir
+
+    if args.output_dir is None:
+        output_dir = str(pathlib.Path(workdir) / default_output_dir)
+    else:
+        output_dir = args.output_dir
+
+    if not os.path.exists(output_dir):
+        print('Output folder {} created'.format(outdir))
+        os.mkdir(output_dir)
+
+    meta = json.load(open(str(pathlib.Path(workdir) / config_file)))
+
+    if len(args.lessons) == 0:
         for number, single_conf in meta.items():
-            render_one(number, single_conf)
-
-    elif len(sys.argv) ==2 and sys.argv[1].isdigit():
-        number = int(sys.argv[1])
-
-        try:
-            conf = meta.get(str(number))
-            render_one(number, conf)
-        except KeyError:
-            print('Lesson {} does not exist'.format(number))
+            render_one(workdir, output_dir, number, single_conf)
 
     else:
-        print('Arguments invalid, expected none or one of type int')
+        for number in args.lessons:
+            print(type(number))
+            number = int(number)
+
+            try:
+                conf = meta.get(str(number))
+                render_one(workdir, output_dir, number, conf)
+            except KeyError:
+                print('Lesson {} does not exist'.format(number))
+
 
 
 if __name__ == '__main__':
