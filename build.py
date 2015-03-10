@@ -5,6 +5,7 @@ import os
 import json
 import sys
 import argparse
+from datetime import datetime
 
 
 md_builder_file = str(pathlib.Path(__file__).parent / 'md_compile.rb')
@@ -49,6 +50,8 @@ def render_one(template, workdir, outdir, config):
 
     print(rendered, file=open(outfile, mode='w+'))
 
+    return infile, outfile
+
 
 def render_all(items, workdir, outdir, config_file):
 
@@ -85,10 +88,16 @@ def render_all(items, workdir, outdir, config_file):
     )
 
     for lesson in items:
-        render_one(template, workdir, outdir, lesson)
+        yield render_one(template, workdir, outdir, lesson)
+
+
+def format_time(t):
+    return '{} seconds'.format(t.days * 24 * 60 * 60 + t.seconds)
 
 
 def main():
+    start_time = datetime.now()
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--workdir', '-d', default='.', nargs='?', type=str)
@@ -109,7 +118,17 @@ def main():
         print('Output folder {} created'.format(outdir))
         os.mkdir(output_dir)
 
-    render_all(args.lessons, workdir, output_dir, config_file)
+    rendered = tuple(render_all(args.lessons, workdir, output_dir, config_file))
+
+    print(
+        'Rendered {} files in {}: {}'.format(
+            len(rendered),
+            format_time(datetime.now() - start_time),
+            '\n'.join('\n{} -> {}'.format(infile, outfile) for infile, outfile in rendered)
+        )
+    )
+
+
 
 
 if __name__ == '__main__':
