@@ -7,56 +7,85 @@ import sys
 import argparse
 
 
-build_markdown_ruby_code = """
-require 'github/markdown'
-
-File.write('{tempfile}', GitHub::Markdown.render(File.read('{file}')))
-"""
-
-md_builder_file = 'md_compile.rb'
+md_builder_file = str(pathlib.Path(__file__).parent / 'md_compile.rb')
 
 template_file = 'template.html'
 
-config_file = 'lessons.json'
+config_file = 'build_conf.json'
 
 default_output_dir = 'build'
 
+stylesheet_format = '<link rel="stylesheet" type="text/css" href="{}" media="all">'
 
-def _render(workdir, filename, lesson_number, lesson_title):
-    rendered_markdown = render_markdown(lesson_number, filename)
-    
-    with open(template_file) as file:
-        template = file.read()
-
-    return template.format(
-        lesson_number=lesson_number,
-        content=rendered_markdown,
-        lesson_title=lesson_title,
-    )
+script_format = '<script type="text/javascript" src="{}">'
 
 
 def render_markdown(lesson_number, file):
-    return subprocess.check_output(('ruby', md_builder_file, file)).decode('utf-8')
+    try:
+        return subprocess.check_output(('ruby', md_builder_file, file)).decode('utf-8')
+    except subprocess.CalledProcessError as e:
+        print(e.output)
+        raise
 
 
-def render_one(workdir, outdir, number, config):
+def render_one(template, workdir, outdir, config):
+
+    assert isinstance(workdir, pathlib.Path)
+
+    number = config['number']
 
     infile = config.get('source', 'lesson_{}.md'.format(number))
 
-    infile = pathlib.Path(workdir) / infile
+    outfile = '{}/{}.html'.format(outdir, infile.rsplit('.', 1)[0])
 
-    outfile = '{}/{}.html'.format(outdir, infile.stem)
-
-    rendered = _render(
-        workdir,
-        str(infile),
-        number,
-        config.get('title', 'Python - Kurs {}'.format(number))
+    rendered = template.format(
+        lesson_number=number,
+        content=render_markdown(number, str(workdir / infile)),
+        lesson_title=config.get('title', 'Python - Kurs {}'.format(number))
     )
 
     if os.path.exists(outfile):
         os.remove(outfile)
+
     print(rendered, file=open(outfile, mode='w+'))
+
+
+def render_all(items, workdir, outdir, config_file):
+
+    workdir = pathlib.Path(workdir)
+
+    meta = json.load(open(str(workdir / config_file)))
+
+    if len(items) == 0:
+        items = meta.get('lessons')
+    else:
+        items = filter(lambda a: a['number'] in items or int(a['number']) in items, meta['lessons'])
+
+    used_template = meta.get('template', 'use_default')
+
+    if used_template == 'use_default':
+        used_template = str(pathlib.Path(__file__).parent / template_file)
+    else:
+        used_template = str(workdir / used_template)
+
+    with open(used_template) as file:
+        template = file.read()
+
+    template = template.format(
+        lesson_number='{lesson_number}',
+        content='{content}',
+        lesson_title='{lesson_title}',
+        stylesheets='\n'.join(
+            stylesheet_format.format(a) for a in meta['theme'].get('stylesheets', ())
+        ),
+        scripts='\n'.join(
+            script_format.format(a) for a in meta['theme'].get('scripts', ())
+        ),
+        **meta.get('static_template_variables', {})
+    )
+
+    for lesson in items:
+        render_one(template, workdir, outdir, lesson)
 
 
 def main():
@@ -80,23 +109,7 @@ def main():
         print('Output folder {} created'.format(outdir))
         os.mkdir(output_dir)
 
-    meta = json.load(open(str(pathlib.Path(workdir) / config_file)))
-
-    if len(args.lessons) == 0:
-        for number, single_conf in meta.items():
-            render_one(workdir, output_dir, number, single_conf)
-
-    else:
-        for number in args.lessons:
-            print(type(number))
-            number = int(number)
-
-            try:
-                conf = meta.get(str(number))
-                render_one(workdir, output_dir, number, conf)
-            except KeyError:
-                print('Lesson {} does not exist'.format(number))
-
+    render_all(args.lessons, workdir, output_dir, config_file)
 
 
 if __name__ == '__main__':
