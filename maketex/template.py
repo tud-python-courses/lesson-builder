@@ -26,22 +26,52 @@ def make_header(title, subtitle):
 % -------------------------- Table of Contens ---------------------------------
 
 \\begin{frame}
-\\tableofcontents'''
+\\tableofcontents
+'''
     return header
+
 
 def make_footer():
     footer = '''\\end{frame}
-\\end{document}'''
+\\end{document}
+'''
     return footer
 
-def make_section():
+
+def make_section(sectiontype, name):
+    length = len(name) - 1
+    name = name[1:length]
     section = '''\\end{frame}
 
 % -------------------------- ''' + '{name}'.format(name=name) + ''' ---------------------------------
 \\''' + '{sectiontype}'.format(sectiontype=sectiontype) + '{' + '{name}'.format(name=name) + '''}
-\\beginopen_curlyframeclose_curly
-\\frametitle{''' + '{name}'.format(name=name) + '}'
+\\begin{frame}
+\\frametitle{''' + '{name}'.format(name=name) + '''}
+'''
+    return section
 
+
+def make_quote(text):
+    quote = '''\\begin{quote}
+''' + '{text}'.format(text=text) + '''
+\\end{quote}
+'''
+    return quote
+
+
+def make_bold(text):
+    bold = '''{\\textbf{''' + '{text}'.format(text=text) + '''}}'''
+    return bold
+
+
+def make_italic(text):
+    italic = '''{\\textit{''' + '{text}'.format(text=text) + '''}}'''
+    return italic
+
+
+def make_code(text):
+    code = '''\\codeblock{''' + '{text}'.format(text=text) +'''}'''
+    return code
 
 
 #  Patterns
@@ -63,7 +93,9 @@ re_quote = re.compile('>.*')
 
 #  Styling
 re_bold = re.compile('.*((__.*__)|(\\*\\*.*\\*\\*)).*')
+re_bold_under = re.compile('.*__.*__.*')
 re_italic = re.compile('.*(( _.*_ )|(\\*.*\\*)).*')
+re_italic_under = re.compile('.*_.*_.*')
 
 #  List
 re_list_unsorted = re.compile('[ ]*((\\*)|(-)) .*')
@@ -72,6 +104,7 @@ re_list_sorted = re.compile('[ ]*[\d]+ .*')
 # Code
 re_code_single = re.compile('.*\\`.*\\`.*')
 re_code_multiple = re.compile('\\`\\`\\`.*')
+re_python_comment = re.compile('#  .*')
 
 #  Links
 re_link = re.compile('.*\\[.*\\]\\(.*\\).*')
