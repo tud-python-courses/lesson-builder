@@ -1,6 +1,7 @@
 require 'html/pipeline'
 require 'pathname'
 require 'json'
+require 'optparse'
 
 include HTML
 
@@ -17,7 +18,7 @@ $pipeline = HTML::Pipeline.new [
 
 $template_file = 'template.html'
 
-default_output_dir = 'build'
+$default_output_dir = 'build'
 
 
 def render_one(template, workdir, outdir, config)
@@ -49,15 +50,13 @@ end
 
 def render_all(items, workdir, outdir, config_file)
 
-    workdir = Pathname.new workdir
-
     meta = JSON.parse(File.read(workdir + config_file))
 
     if items.length == 0
         items = meta.fetch("lessons", [])
     else
         items = meta["lessons"].select do |a|
-            items.include?(a["number"]) or items.includes?(a["number"])
+            items.include?(a["number"])
         end
     end
 
@@ -84,8 +83,6 @@ def render_all(items, workdir, outdir, config_file)
         end.join('\n')
     }
 
-    puts template
-
     items.map do |lesson|
         render_one(template, workdir, outdir, lesson)
     end
@@ -103,8 +100,23 @@ end
 def main()
     start_time = Time.new
 
-    workdir, output_dir = ARGV
+    options = {}
 
+    OptionParser.new do |opts|
+        opts.on("-d", "--working_directory [DIRECTORY]", "Set working directory") do |n|
+            options[:workdir] = n
+        end
+
+        opts.on("-t", "--theme_folder", "specify theme folder to use") do |n|
+            options[:theme_folder] = n
+        end
+
+        opts.on("-o", "--output_dir" "Specify the output directory") do |n|
+            options[:output_dir] = n
+        end
+    end.parse!
+
+    lessons = ARGV.map {|n| n.to_i}
 
     # parser.add_argument('--workdir', '-d', default='.', nargs='?', type=str)
     # parser.add_argument('lessons', nargs='*', type=int)
@@ -113,7 +125,10 @@ def main()
 
     config_file = 'build_conf.json'
 
-    rendered = render_all([], workdir, output_dir, config_file)
+    workdir = Pathname.new options.fetch(:workdir, '.')
+    output_dir = options.fetch(:output_dir, workdir + $default_output_dir)
+
+    rendered = render_all(lessons, workdir, output_dir, config_file)
 
     files = rendered.map do |elem|
         infile, outfile = elem
