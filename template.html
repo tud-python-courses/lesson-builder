@@ -4,12 +4,12 @@
   <head>
     <meta charset='utf-8' />
     <meta http-equiv="X-UA-Compatible" content="chrome=1" />
-    <meta name="description" content="Python courses course {lesson_number}" />
+    <meta name="description" content="Python Kurse Kurs %{lesson_number}" />
 
-    {stylesheets}
-    {scripts}
+    %{stylesheets}
+    %{scripts}
 
-    <title>{lesson_title}</title>
+    <title>%{lesson_title}</title>
   </head>
 
   <body>
@@ -17,10 +17,10 @@
     <!-- HEADER -->
     <div id="header_wrap" class="outer">
         <header class="inner">
-          <a id="forkme_banner" href="{repository_link}">View on GitHub</a>
+          <a id="forkme_banner" href="">View on GitHub</a>
 
-          <h1 id="project_title">Python Kurse - Übung {lesson_number}</h1>
-          <h2 id="project_tagline">{lesson_title}</h2>
+          <h1 id="project_title">Python Kurse - Übung %{lesson_number}</h1>
+          <h2 id="project_tagline">%{lesson_title}</h2>
 
           <section id="downloads">
             <a class="zip_download_link" href="https://github.com/tud-python-courses/presentation-notes/archive/master.zip">Download this project as a .zip file</a>
@@ -32,7 +32,7 @@
     <!-- MAIN CONTENT -->
     <div id="main_content_wrap" class="outer">
       <section id="main_content" class="inner">
-          {content}
+          %{content}
       </section>
     </div>
 
@@ -40,7 +40,6 @@
     <div id="footer_wrap" class="outer">
       <footer class="inner">
         <p class="copyright">Slate theme maintained by <a href="https://github.com/jsncostello">Jason Costello</a></p>
-        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
       </footer>
     </div>
 
