@@ -11,7 +11,7 @@ $pipeline = HTML::Pipeline.new [
     Pipeline::TableOfContentsFilter, # add 'name' anchors to all headers and generate toc list
     #Pipeline::CamoFilter,
     #Pipeline::ImageMaxWidthFilter,
-    #Pipeline::SyntaxHighlightFilter,
+    Pipeline::SyntaxHighlightFilter,
     #Pipeline::EmojiFilter,
     Pipeline::AutolinkFilter
 ]
