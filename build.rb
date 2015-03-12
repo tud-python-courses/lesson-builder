@@ -3,15 +3,16 @@ require 'pathname'
 require 'json'
 require 'optparse'
 
+
 include HTML
 
 
-$pipeline = HTML::Pipeline.new [
+$pipeline = Pipeline.new [
     Pipeline::MarkdownFilter,
     Pipeline::TableOfContentsFilter, # add 'name' anchors to all headers and generate toc list
     #Pipeline::CamoFilter,
     #Pipeline::ImageMaxWidthFilter,
-    Pipeline::SyntaxHighlightFilter,
+    #Pipeline::SyntaxHighlightFilter,
     #Pipeline::EmojiFilter,
     Pipeline::AutolinkFilter
 ]
@@ -25,9 +26,9 @@ def render_one(template, workdir, outdir, config)
 
     raise "type of workdir" unless workdir.is_a?(Pathname)
 
-    number = config["number"]
+    number = config['number']
 
-    infile_name = config.fetch("source", "lesson_#{number}.md")
+    infile_name = config.fetch('source', "lesson_#{number}.md")
 
     infile = workdir + infile_name
 
@@ -36,7 +37,7 @@ def render_one(template, workdir, outdir, config)
     rendered = template % {
         :lesson_number => number,
         :content => render_markdown(number, infile),
-        :lesson_title => config.fetch("title", "Python - Kurs #{number}")
+        :lesson_title => config.fetch('title', "Python - Kurs #{number}")
     }
 
 
@@ -53,16 +54,16 @@ def render_all(items, workdir, outdir, config_file)
     meta = JSON.parse(File.read(workdir + config_file))
 
     if items.length == 0
-        items = meta.fetch("lessons", [])
+        items = meta.fetch('lessons', [])
     else
-        items = meta["lessons"].select do |a|
-            items.include?(a["number"])
+        items = meta.fetch('lessons', []).select do |a|
+            items.include?(a['number'])
         end
     end
 
-    used_template = meta.fetch("template", "use_default")
+    used_template = meta['template']
 
-    if used_template == 'use_default'
+    if used_template == nil or used_template == 'use_default'
         used_template = Pathname.new(__FILE__).parent.join + $template_file
     else
         used_template = workdir + used_template
@@ -75,10 +76,10 @@ def render_all(items, workdir, outdir, config_file)
         :lesson_number => '%{lesson_number}',
         :content => '%{content}',
         :lesson_title => '%{lesson_title}',
-        :stylesheets => meta["theme"].fetch("stylesheets", []).map do |a|
+        :stylesheets => meta["theme"].fetch('stylesheets', []).map do |a|
             "<link rel=\"stylesheet\" type=\"text/css\" href=\"#{a}\" media=\"all\">"
         end.join('\n'),
-        :scripts => meta["theme"].fetch("scripts", []).map do |a|
+        :scripts => meta["theme"].fetch('scripts', []).map do |a|
             "<script type=\"text/javascript\" src=\"#{a}\">"
         end.join('\n')
     }
@@ -130,8 +131,7 @@ def main()
 
     rendered = render_all(lessons, workdir, output_dir, config_file)
 
-    files = rendered.map do |elem|
-        infile, outfile = elem
+    files = rendered.map do |infile, outfile|
         "\n#{infile}  ->  #{outfile}"
     end.join('')
 
