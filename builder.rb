@@ -1,11 +1,12 @@
 require 'pathname'
 require 'set'
-
+require 'logger'
+require 'fileutils'
 
 
 module BuildTools
 
-  VALID_LATEX_COMMANDS = Set.new %w(htlatex pdflatex)
+  VALID_LATEX_COMMANDS = {:htlatex => 'html', :pdflatex => 'pdf'}
 
   module Compile
 
@@ -13,10 +14,24 @@ module BuildTools
       latex source_file, command: 'htlatex'
     end
 
-    def self.latex(source_file, command: 'pdflatex')
-      raise "invalid latex command #{command}" unless VALID_LATEX_COMMANDS.include? command
-      # TODO check command is valid
-      `#{command} #{source_file}`
+    def self.latex(source_file, command: :pdflatex)
+
+      command = command.to_sym
+
+      return_type = VALID_LATEX_COMMANDS[command]
+
+      raise "invalid latex command #{command}" if return_type.nil?
+
+      c = "#{command} -halt-on-error #{source_file}"
+      [system("#{c}"), construct_out_file_name(source_file, return_type)]
+    end
+
+    private
+
+    def self.construct_out_file_name(path, type)
+      path = Pathname path unless path.is_a? Pathname
+
+      File.basename(path, '.*') + ".#{type}"
     end
 
   end
@@ -29,15 +44,15 @@ module BuildTools
 
       cdir = Pathname Dir.getwd
 
-      output_file_name = construct_output_file_name source_file
-
       Dir.chdir source_dir
 
-      latex source_file, command: command
+      success, output_file_name = Compile.latex source_file, command: command
 
       Dir.chdir cdir
 
-      FileUtils.cp(source_dir + output_file_name, target_dir)
+      FileUtils.cp(source_dir + output_file_name, target_dir) if success
+
+      [success, output_file_name]
     end
 
     def self.batch_build(source_files, source_dir, target_dir, command)
@@ -48,20 +63,21 @@ module BuildTools
 
       Dir.chdir source_dir
 
-      compiled_files = source_files.map do |file|
-        latex file, command: command
-
-        construct_output_file_name(file)
+      compile_result = source_files.map do |file|
+        Compile.latex file, command: command
       end
 
       Dir.chdir cdir
 
-      source_files.zip(
-        compiled_files.map do |file|
-          FileUtils.cp(source_dir + file, target_dir)
-          target_dir + file
-        end
-      )
+
+      compile_result.zip(source_files).map do |result, source|
+        success, file = result
+
+        FileUtils.cp(source_dir + file, target_dir) if success
+
+        [success, source_dir + source, target_dir + file]
+      end
+
     end
 
     def self.from_config(config, source_dir: nil, target_dir: nil)
@@ -88,11 +104,11 @@ module BuildTools
 
       # get the file names
       html_built = html_built.map do |lesson|
-        lesson.fetch 'source', "lesson_#{file}.tex"
+        lesson.fetch 'source', "lesson_#{lesson['number']}.tex"
       end
 
       pdf_built = pdf_built.map do |lesson|
-        lesson.fetch 'source', "lesson_#{file}.tex"
+        lesson.fetch 'source', "lesson_#{lesson['number']}.tex"
       end
 
       # build html
@@ -119,23 +135,18 @@ module BuildTools
       built = build_directory source, target
 
       puts "Built #{built[:html].length + built[:pdf].length} files in #{Time.new - start_time}"
+      built.each do |_, list|
+        list.each do |result, original, compiled|
+          if result
+            result = 'success'
+          else
+            result = 'errored'
+          end
 
-      built.each do |key, list|
-        list.each do |original, compiled|
-          puts "#{original}  ->  #{compiled}"
+          puts "#{original}  ->  #{compiled}   #{result}"
         end
       end
     end
-
-    private
-
-    def construct_output_file_name(source_file)
-
-      base = File.basename source_file, '.*'
-
-      base + '.html'
-    end
-
   end
 
 end
