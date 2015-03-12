@@ -104,7 +104,7 @@ def main()
     options = {}
 
     OptionParser.new do |opts|
-        opts.on("-d", "--working_directory [DIRECTORY]", "Set working directory") do |n|
+        opts.on("-d", "--working_dir DIRECTORY", "Set working directory") do |n|
             options[:workdir] = n
         end
 
