@@ -24,7 +24,7 @@ $default_output_dir = 'build'
 
 def render_one(template, workdir, outdir, config)
 
-    raise "type of workdir" unless workdir.is_a?(Pathname)
+    raise 'type of workdir' unless workdir.is_a?(Pathname)
 
     number = config['number']
 
@@ -36,7 +36,7 @@ def render_one(template, workdir, outdir, config)
 
     rendered = template % {
         :lesson_number => number,
-        :content => render_markdown(number, infile),
+        :content => render_markdown(infile),
         :lesson_title => config.fetch('title', "Python - Kurs #{number}")
     }
 
@@ -72,24 +72,32 @@ def render_all(items, workdir, outdir, config_file)
 
     template = File.read(used_template)
 
-    template = template % {
+    static_vars = meta.fetch('static_template_variables', {}).map do |key, value|
+        [key.to_sym, value]
+    end
+
+    vars = {
         :lesson_number => '%{lesson_number}',
         :content => '%{content}',
         :lesson_title => '%{lesson_title}',
-        :stylesheets => meta["theme"].fetch('stylesheets', []).map do |a|
+        :stylesheets => meta['theme'].fetch('stylesheets', []).map do |a|
             "<link rel=\"stylesheet\" type=\"text/css\" href=\"#{a}\" media=\"all\">"
         end.join('\n'),
-        :scripts => meta["theme"].fetch('scripts', []).map do |a|
+        :scripts => meta['theme'].fetch('scripts', []).map do |a|
             "<script type=\"text/javascript\" src=\"#{a}\">"
         end.join('\n')
-    }
+    }.merge(
+        static_vars
+    )
+
+    template = template % vars
 
     items.map do |lesson|
         render_one(template, workdir, outdir, lesson)
     end
 end
 
-def render_markdown(lesson_number, file)
+def render_markdown(file)
     input_file = File.read file
 
     result = $pipeline.call input_file
@@ -104,15 +112,15 @@ def main()
     options = {}
 
     OptionParser.new do |opts|
-        opts.on("-d", "--working_dir DIRECTORY", "Set working directory") do |n|
+        opts.on('-d', '--working_dir DIRECTORY', 'Set working directory') do |n|
             options[:workdir] = n
         end
 
-        opts.on("-t", "--theme_folder", "specify theme folder to use") do |n|
+        opts.on('-t', '--theme_folder', 'specify theme folder to use') do |n|
             options[:theme_folder] = n
         end
 
-        opts.on("-o", "--output_dir" "Specify the output directory") do |n|
+        opts.on('-o', '--output_dir' 'Specify the output directory') do |n|
             options[:output_dir] = n
         end
     end.parse!
