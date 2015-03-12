@@ -10,10 +10,12 @@ module BuildTools
 
   module Compile
 
-    def self.latex_to_html(source_file)
-      latex source_file, command: 'htlatex'
+    # call a latex command with 'htlatex' as default
+    def self.latex_to_html(source_file, command: :htlatex)
+      latex source_file, command: command
     end
 
+    # call a latex command and return useful information
     def self.latex(source_file, command: :pdflatex)
 
       command = command.to_sym
@@ -28,6 +30,7 @@ module BuildTools
 
     private
 
+    # helper method clue is in the name
     def self.construct_out_file_name(path, type)
       path = Pathname path unless path.is_a? Pathname
 
@@ -38,6 +41,7 @@ module BuildTools
 
   module Build
 
+    # build a single source file
     def self.build(source_file, source_dir, target_dir, command)
 
       source_dir = Pathname source_dir
@@ -55,6 +59,7 @@ module BuildTools
       [success, output_file_name]
     end
 
+    # build multiple source files
     def self.batch_build(source_files, source_dir, target_dir, command)
 
       source_dir = Pathname source_dir
@@ -80,6 +85,7 @@ module BuildTools
 
     end
 
+    # Build all objects(hashes) in config based on the settings in the config hash
     def self.from_config(config, source_dir: nil, target_dir: nil)
 
       source_dir = config['source_dir'] if source_dir.nil?
@@ -121,6 +127,7 @@ module BuildTools
 
     end
 
+    # Build all source files in a directory based on a build_conf.json in that directory
     def self.build_directory(source, target)
       source = Pathname source
 
@@ -129,6 +136,7 @@ module BuildTools
       BuildTools::Build.from_config conf, source_dir: source, target_dir: target
     end
 
+    # Same as build_directory but also prints some useful output to the console
     def self.build_dir_with_output(source, target)
       start_time = Time.new
 
