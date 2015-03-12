@@ -4,14 +4,14 @@ module Git
 
   def pull(repository=nil)
     if repository.nil?
-      `git pull`
+      raise 'Pull failed' unless system 'git pull'
     else
-      `git pull #{repository}`
+      raise 'Pull failed' unless system "git pull #{repository}"
     end
   end
 
   def clone(url)
-    `git clone #{url}`
+    raise 'Clone failed' unless "git clone #{url}"
   end
 
 
