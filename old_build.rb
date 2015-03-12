@@ -106,7 +106,7 @@ def render_markdown(file)
 end
 
 
-def main()
+def main
     start_time = Time.new
 
     options = {}
