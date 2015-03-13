@@ -111,7 +111,7 @@ module BuildTools
         git.clone conf['git_url'], source_dir
       end
 
-      build_directory source_dir, conf.fetch('target_dir', source_dir + 'build'), conf.fetch('build_includes', nil)
+      build_directory source_dir, conf.fetch('target_dir', source_dir + 'build')
     end
 
     def self.build_include_from_dir(conf)
@@ -119,20 +119,18 @@ module BuildTools
 
       raise "source directory #{source_dir} for include #{conf['name']} does not exist" unless Dir.exist? source_dir
 
-      build_directory source_dir, conf.fetch('target_dir', source_dir + 'build'), conf.fetch('build_includes', nil)
+      build_directory source_dir, conf.fetch('target_dir', source_dir + 'build')
     end
 
     # Build all source files in a directory based on a build_conf.json in that directory
-    def self.build_directory(source, target_dir, build_includes: nil)
+    def self.build_directory(source, target_dir, enforce: nil, default: nil)
 
       # read config
       source = Pathname source
-      conf = read_conf source
+      conf = read_conf source, enforce, default
 
       # make switches
-      build_includes = conf.fetch('build_includes', true) if build_includes.nil?
-
-      source = conf['source_dir'] if source.nil?
+      build_includes = conf.fetch('build_includes', true)
 
       target_dir = conf.fetch('target_dir', source + 'build') if target_dir.nil?
       target_dir = Pathname target_dir
@@ -167,12 +165,12 @@ module BuildTools
       end
 
       # get the file names
-      html_builds = html_builds.map do |source_file|
-        source_file.fetch 'source', "lesson_#{source_file['number']}.tex"
+      html_builds = html_builds.map do |source_file_conf|
+        source_file_conf.fetch 'source', "lesson_#{source_file_conf['number']}.tex"
       end
 
-      pdf_builds = pdf_builds.map do |source_file|
-        source_file.fetch 'source', "lesson_#{source_file['number']}.tex"
+      pdf_builds = pdf_builds.map do |source_file_conf|
+        source_file_conf.fetch 'source', "lesson_#{source_file_conf['number']}.tex"
       end
 
       # build html
@@ -211,8 +209,17 @@ module BuildTools
       url.rpartition('/')[2].rpartition('.')[0]
     end
 
-    def self.read_conf(source)
-      JSON.parse File.read(source + CONFIG_NAME)
+    def self.read_conf(source, enforce, default)
+
+      config_read = JSON.parse File.read(source + CONFIG_NAME)
+
+      if default.nil?
+        out = config_read
+      else
+        out = default.merge config_read
+      end
+
+      out ? enforce.nil? : out.merge enforce
     end
   end
 end
