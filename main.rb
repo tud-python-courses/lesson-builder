@@ -1,7 +1,6 @@
-load 'builder.rb'
-load 'gittools.rb'
 require 'json'
-
+require './builder'
+require './gittools'
 
 CONFIG_NAME = 'build_conf.json'
 

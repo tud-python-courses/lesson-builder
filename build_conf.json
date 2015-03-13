@@ -1,5 +1,9 @@
 {
-  "submodules": [
-
+  "include": [
+    {
+      "git_url": "https://github.com/fsr/python-lessons.git",
+      "target_dir": "../lessons/build",
+      "source_dir": "../lessons"
+    }
   ]
 }

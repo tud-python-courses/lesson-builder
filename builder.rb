@@ -12,6 +12,9 @@ module BuildTools
 
   module Compile
 
+    PDF_DEFAULT_COMMAND = 'pdflatex'
+    HTML_DEFAULT_COMMAND = 'htlatex'
+
     # call a latex command with 'htlatex' as default
     def self.latex_to_html(source_file, command: :htlatex)
       latex source_file, command: command
@@ -89,9 +92,9 @@ module BuildTools
 
     def self.build_include(conf)
       if conf.include? 'git_url'
-        build_include_with_git conf
+        return build_include_with_git conf
       else
-        build_include_from_dir conf
+        return build_include_from_dir conf
       end
     end
 
@@ -104,14 +107,14 @@ module BuildTools
         Dir.chdir source_dir
         begin
           Git.pull
-        rescue 'Pull failed'
-          raise 'Source folder exists but pull failed, make sure the repository is configured properly'
+        rescue RuntimeError => e
+          raise "Source folder exists but `git pull` failed with #{e}, make sure the repository is configured properly"
         end
       else
         git.clone conf['git_url'], source_dir
       end
 
-      build_directory source_dir, conf.fetch('target_dir', source_dir + 'build')
+      build_directory source_dir, conf.fetch('target_dir', nil)
     end
 
     def self.build_include_from_dir(conf)
@@ -119,31 +122,33 @@ module BuildTools
 
       raise "source directory #{source_dir} for include #{conf['name']} does not exist" unless Dir.exist? source_dir
 
-      build_directory source_dir, conf.fetch('target_dir', source_dir + 'build')
+      build_directory source_dir, conf.fetch('target_dir', nil)
     end
 
     # Build all source files in a directory based on a build_conf.json in that directory
-    def self.build_directory(source, target_dir, enforce: nil, default: nil)
+    def self.build_directory(root, target_dir, enforce: nil, default: nil)
 
       # read config
-      source = Pathname source
-      conf = read_conf source, enforce, default
+      root = Pathname root
+      conf = read_conf root, enforce, default
+
+      source = Pathname conf.fetch('source_dir', root)
 
       # make switches
-      build_includes = conf.fetch('build_includes', true)
+      build_includes = conf.fetch 'build_includes', true
 
-      target_dir = conf.fetch('target_dir', source + 'build') if target_dir.nil?
+      target_dir = conf.fetch('target_dir', root + 'build') if target_dir.nil?
       target_dir = Pathname target_dir
-      pdf_command = conf.fetch 'pdf_latex_command', 'pdflatex'
-      html_command = conf.fetch 'html_latex_command', 'htlatex'
+      pdf_command = conf.fetch 'pdf_latex_command', Compile::PDF_DEFAULT_COMMAND
+      html_command = conf.fetch 'html_latex_command', Compile::HTML_DEFAULT_COMMAND
 
 
-      if build_includes
+      if build_includes and not conf.fetch('include', []).empty?
 
-        include_builds = conf.fetch('include', []).map &method(:build_include)
+        include_builds = conf['include'].map &method(:build_include)
 
         included_html_builds, included_pdf_builds = include_builds.map do |r|
-          [r[:html], r[:pdf]]
+          r.values
         end.transpose.map do |list|
           list.flatten
         end
@@ -173,13 +178,21 @@ module BuildTools
         source_file_conf.fetch 'source', "lesson_#{source_file_conf['number']}.tex"
       end
 
+      a = Logger.new STDERR
+
+      a.debug "Files to build html for #{html_builds}"
+      a.debug "Files to build pdf for #{pdf_builds}"
+
       # build html
       html_res = batch_build html_builds, source, target_dir, html_command
 
       # build pdf
       pdf_res = batch_build pdf_builds, source, target_dir, pdf_command
 
-      { :html => html_res + included_html_builds, :pdf => pdf_res + included_pdf_builds }
+      raise "Wrong Type #{html_res}" unless html_res.is_a? Array
+      raise "Wrong Type #{pdf_res}" unless pdf_res.is_a? Array
+
+      {html: (html_res + included_html_builds), pdf: (pdf_res + included_pdf_builds)}
 
     end
 
@@ -189,7 +202,7 @@ module BuildTools
 
       built = build_directory source, target
 
-      puts "Built #{built[:html].length + built[:pdf].length} files in #{Time.new - start_time}"
+      puts "Built #{built[:html].length + built[:pdf].length} files in #{Time.new - start_time} seconds"
       built.each do |_, list|
         list.each do |result, original, compiled|
           if result
@@ -219,7 +232,7 @@ module BuildTools
         out = default.merge config_read
       end
 
-      out ? enforce.nil? : out.merge enforce
+      enforce.nil? ? out : out.merge(enforce)
     end
   end
 end
