@@ -2,6 +2,8 @@ require 'pathname'
 require 'set'
 require 'logger'
 require 'fileutils'
+require 'json'
+require './gittools'
 
 
 module BuildTools
@@ -85,55 +87,102 @@ module BuildTools
 
     end
 
-    # Build all objects(hashes) in config based on the settings in the config hash
-    def self.from_config(config, source_dir: nil, target_dir: nil)
+    def self.build_include(conf)
+      if conf.include? 'git_url'
+        build_include_with_git conf
+      else
+        build_include_from_dir conf
+      end
+    end
 
-      source_dir = config['source_dir'] if source_dir.nil?
-      source_dir = Pathname source_dir
+    def self.build_include_with_git(conf)
 
-      target_dir = config.fetch('target_dir', source_dir + 'build') if target_dir.nil?
-      target_dir = Pathname target_dir
-      pdf_command = config.fetch 'pdf_latex_command', 'pdflatex'
-      html_command = config.fetch 'html_latex_command', 'htlatex'
+      source_dir = Pathname conf.fetch('source_dir', self.folder_from_git_url(conf['git_url']))
 
-      lessons = config['lessons']
-
-      # filter for lessons that will be html built
-      html_built = lessons.select do |lesson|
-        lesson.fetch 'html', false
+      if File.exist? source_dir
+        raise 'Not a repository' unless File.exist? (source_dir + '.git')
+        Dir.chdir source_dir
+        begin
+          Git.pull
+        rescue 'Pull failed'
+          raise 'Source folder exists but pull failed, make sure the repository is configured properly'
+        end
+      else
+        git.clone conf['git_url'], source_dir
       end
 
-      # filter for lessons that will be pdf built
-      pdf_built = lessons.select do |lesson|
-        lesson.fetch 'pdf', false
-      end
+      build_directory source_dir, conf.fetch('target_dir', source_dir + 'build'), conf.fetch('build_includes', nil)
+    end
 
-      # get the file names
-      html_built = html_built.map do |lesson|
-        lesson.fetch 'source', "lesson_#{lesson['number']}.tex"
-      end
+    def self.build_include_from_dir(conf)
+      source_dir = Pathname conf['source_dir']
 
-      pdf_built = pdf_built.map do |lesson|
-        lesson.fetch 'source', "lesson_#{lesson['number']}.tex"
-      end
+      raise "source directory #{source_dir} for include #{conf['name']} does not exist" unless Dir.exist? source_dir
 
-      # build html
-      html_res = batch_build html_built, source_dir, target_dir, html_command
-
-      # build pdf
-      pdf_res = batch_build pdf_built, source_dir, target_dir, pdf_command
-
-      { :html => html_res, :pdf => pdf_res }
-
+      build_directory source_dir, conf.fetch('target_dir', source_dir + 'build'), conf.fetch('build_includes', nil)
     end
 
     # Build all source files in a directory based on a build_conf.json in that directory
-    def self.build_directory(source, target)
+    def self.build_directory(source, target_dir, build_includes: nil)
+
+      # read config
       source = Pathname source
+      conf = read_conf source
 
-      conf = JSON.parse File.read(source + CONFIG_NAME)
+      # make switches
+      build_includes = conf.fetch('build_includes', true) if build_includes.nil?
 
-      BuildTools::Build.from_config conf, source_dir: source, target_dir: target
+      source = conf['source_dir'] if source.nil?
+
+      target_dir = conf.fetch('target_dir', source + 'build') if target_dir.nil?
+      target_dir = Pathname target_dir
+      pdf_command = conf.fetch 'pdf_latex_command', 'pdflatex'
+      html_command = conf.fetch 'html_latex_command', 'htlatex'
+
+
+      if build_includes
+
+        include_builds = conf.fetch('include', []).map &method(:build_include)
+
+        included_html_builds, included_pdf_builds = include_builds.map do |r|
+          [r[:html], r[:pdf]]
+        end.transpose.map do |list|
+          list.flatten
+        end
+
+      else
+        included_html_builds, included_pdf_builds = [[],[]]
+      end
+
+      build_sources = conf.fetch 'files', []
+
+      # filter for lessons that will be html built
+      html_builds = build_sources.select do |source_file_conf|
+        source_file_conf.fetch 'html', false
+      end
+
+      # filter for lessons that will be pdf built
+      pdf_builds = build_sources.select do |source_file_conf|
+        source_file_conf.fetch 'pdf', false
+      end
+
+      # get the file names
+      html_builds = html_builds.map do |source_file|
+        source_file.fetch 'source', "lesson_#{source_file['number']}.tex"
+      end
+
+      pdf_builds = pdf_builds.map do |source_file|
+        source_file.fetch 'source', "lesson_#{source_file['number']}.tex"
+      end
+
+      # build html
+      html_res = batch_build html_builds, source, target_dir, html_command
+
+      # build pdf
+      pdf_res = batch_build pdf_builds, source, target_dir, pdf_command
+
+      { :html => html_res + included_html_builds, :pdf => pdf_res + included_pdf_builds }
+
     end
 
     # Same as build_directory but also prints some useful output to the console
@@ -154,6 +203,16 @@ module BuildTools
           puts "#{original}  ->  #{compiled}   #{result}"
         end
       end
+    end
+
+    private
+
+    def self.folder_from_git_url(url)
+      url.rpartition('/')[2].rpartition('.')[0]
+    end
+
+    def self.read_conf(source)
+      JSON.parse File.read(source + CONFIG_NAME)
     end
   end
 end

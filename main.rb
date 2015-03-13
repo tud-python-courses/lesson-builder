@@ -19,7 +19,7 @@ end
 
 
 def main
-
+  build_one
 end
 
 
