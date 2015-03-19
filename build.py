@@ -139,6 +139,14 @@ class Include:
     def repo(self):
         return GitRepository(self.git_url, self.directory)
 
+    @classmethod
+    def realtive_to(cls, base_dir, git_url=None, directory=None, target_dir=None):
+        return cls(
+            git_url,
+            os.path.join(base_dir, directory),
+            os.path.join(base_dir, target_dir)
+        )
+
 
 def refresh_includes(includes):
     """
@@ -147,10 +155,6 @@ def refresh_includes(includes):
     :param includes:
     :return:
     """
-    includes = tuple(
-        Include(**i) for i in includes
-    )
-
     repos = tuple(i.repo() for i in includes)
 
     # calculating pull results
@@ -213,9 +217,15 @@ def abuild_directory(wd):
         logger.error(e)
         return ()
 
+    includes_folder = os.path.join(wd, conf.get('includes_directory', ''))
+
+    includes = tuple(
+        Include.realtive_to(includes_folder, **i) for i in conf.get('include', ())
+    )
+
     building_includes = tuple(itertools.chain.from_iterable(
         abuild_directory(include.directory)
-        for include in refresh_includes(conf.get('include', ()))
+        for include in refresh_includes(includes)
     ))
 
     builds = tuple(Build(name, base_dir=wd, **b_conf) for name, b_conf in conf.get('builds', {}).items())
@@ -260,7 +270,7 @@ def build_and_report(wd):
 
 def main():
     import sys
-    wd, *l = sys.argv
+    script, wd, *l = sys.argv
     build_and_report(wd)
 
 if __name__ == '__main__':
