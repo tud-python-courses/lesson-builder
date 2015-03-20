@@ -1,0 +1,10 @@
+[
+    {
+        "name": "fsr/python-lessons",
+        "directory": "python_lessons"
+    },
+    {
+        "name": "fsr/ruby-lessons",
+        "directory": "ruby_lessons"
+    }
+]

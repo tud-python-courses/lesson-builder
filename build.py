@@ -2,10 +2,12 @@
 import functools
 import json
 import os
+import re
 import subprocess
 import itertools
 import logging
 import io
+import urllib
 
 
 DEBUG = True
@@ -75,14 +77,28 @@ class Build:
 
 
 class GitRepository:
+    GIT_URL_REGEX = re.compile(
+        '^\w+://(?P<host>\w+\.\w+)/(?P<name>[\w_-]+/[\w_-]+).git$'
+    )
+
+    host_urls = {
+        'github.com': 'https://github.com'
+    }
+
     """Model for git repository"""
-    def __init__(self, url, directory):
-        self.url = url
-        if not directory:
-            if not url:
-                raise ValueError('Need either url or directory')
-            directory = self.dir_from_url(url)
-        self.directory = directory
+    def __init__(self, name, host='github.com'):
+        self.name = name
+        self.host = host
+
+    @classmethod
+    def from_url(cls, url):
+        match = re.match(cls.GIT_URL_REGEX, url)
+
+        return cls(
+            name=match.group('name'),
+            host=match.group('host')
+        )
+
 
     @staticmethod
     def dir_from_url(url):
@@ -94,25 +110,27 @@ class GitRepository:
         """
         return url.rsplit('.', 1)[0].rsplit('/', 1)[1]
 
-    def apull(self):
+    def apull(self, directory='.'):
         """
         Perform git pull for this repository asynchronous
 
         :return: Executing process
         """
-        return subprocess.Popen(('git', '-C', self.directory, 'pull'))
+        return subprocess.Popen(('git', '-C', directory, 'pull'))
 
-    def aclone(self):
+    def aclone(self, into_dir=None):
         """
         Perform git clone for this repository asynchronous
 
         :return: Executing process
         """
-        if not self.url:
+        if not self.name:
             raise ValueError('Cannot clone without url')
-        action = ['git', 'clone', self.url]
-        if self.directory:
-            action.append(self.directory)
+        url = self.host_urls[self.host] + '/' + self.name + '.git'
+
+        action = ['git', 'clone', url]
+        if into_dir:
+            action.append(into_dir)
         return subprocess.Popen(action)
 
     def refresh(self):
@@ -131,17 +149,22 @@ class GitRepository:
 
 
 class Include:
-    def __init__(self, git_url=None, directory=None, target_dir=None):
-        self.git_url = git_url
+    def __init__(self, repository=None, directory=None, target_dir=None):
+        self.repository = repository
         self.directory = directory
         self.target_dir = target_dir
 
-    def repo(self):
-        return GitRepository(self.git_url, self.directory)
+    @classmethod
+    def from_config(cls, git_url, directory=None, target_dir=None):
+        return cls(
+            GitRepository.from_url(git_url),
+            directory,
+            target_dir
+        )
 
     @classmethod
     def realtive_to(cls, base_dir, git_url=None, directory=None, target_dir=None):
-        return cls(
+        return cls.from_config(
             git_url,
             os.path.join(base_dir, directory),
             os.path.join(base_dir, target_dir)
@@ -155,18 +178,16 @@ def refresh_includes(includes):
     :param includes:
     :return:
     """
-    repos = tuple(i.repo() for i in includes)
-
     # calculating pull results
     pull_results = map(
         lambda a: (a[0], a[1].wait()),
         # starting pulls
-        ((r, r.apull()) for r in repos)
+        ((r, r.repository.apull()) for r in includes)
     )
     pull_success, pull_failed = partition(lambda a: a[1] == 0, pull_results)
     clone_results = map(
         lambda a: (a[0], a[1].wait()),
-        tuple(map(lambda a: (a[0], a[0].aclone()), pull_failed))
+        tuple(map(lambda a: (a[0], a[0].repository.aclone()), pull_failed))
     )
 
     clone_success, clone_failed = partition(
@@ -174,10 +195,10 @@ def refresh_includes(includes):
         clone_results
     )
 
-    for repo, code in clone_failed:
+    for include, code in clone_failed:
         logger.error(
             'Pull and clone failed for {} with code {}'.format(
-                repo.url, code
+                include.repository.name, code
             )
         )
 
@@ -261,17 +282,13 @@ def build_and_report(wd):
             for build, building_files in builds
         )
 
-    print(
-        print_finished(
-            building
-        )
-    )
+    return print_finished(building)
 
 
 def main():
     import sys
     script, wd, *l = sys.argv
-    build_and_report(wd)
+    print(build_and_report(wd))
 
 if __name__ == '__main__':
     main()

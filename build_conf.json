@@ -1,20 +1,17 @@
 {
     "include": [
         {
-            "git_url": "fsr/python-lessons",
-            "host": "https://github.com/",
+            "git_url": "https://github.com/fsr/python-lessons.git",
             "target_dir": "build/python-lessons",
             "directory": "python-lessons"
         },
         {
-            "git_url": "fsr/c-lessons",
-            "host": "https://github.com/",
+            "git_url": "https://github.com/fsr/c-lessons.git",
             "target_dir": "build/c-lessons",
             "directory": "c-lessons"
         },
         {
-            "git_url": "fsr/ruby-lessons",
-            "host": "https://github.com/",
+            "git_url": "https://github.com/fsr/ruby-lessons.git",
             "target_dir": "build/ruby-lessons",
             "directory": "ruby-lessons"
         }
