@@ -11,6 +11,12 @@ cgitb.enable()
 
 
 APP_DIRECTORY = '/Users/justusadam/projects/Ruby/lesson-builder'
+
+
+def relative(*args, to=APP_DIRECTORY):
+    return os.path.join(to, *args)
+
+REPOS_DIRECTORY = relative('repos')
 WATCH_CONF_NAME = 'watch_conf.json'
 skip_strings = {'[skip build]', '[build skip]'}
 
@@ -26,9 +32,6 @@ build.DEBUG = False
 
 __author__ = 'Justus Adam'
 __version__ = '0.1'
-
-
-relative = functools.partial(os.path.join, APP_DIRECTORY)
 
 
 def apply(function, iterable):
@@ -65,7 +68,7 @@ def handle_payload(payload):
             with open(conf_path, mode='w') as f:
                 json.dump(list(mapped.values()), f, indent=4)
 
-        repo_path = relative(mapped[repo_name]['directory'])
+        repo_path = relative(mapped[repo_name]['directory'], to=REPOS_DIRECTORY)
         repo_obj = build.GitRepository(repo_name)
 
         if not os.path.exists(repo_path):
