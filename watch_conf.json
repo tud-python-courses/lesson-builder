@@ -1,1 +1,13 @@
-[{"directory": "python_lessons", "id": "00000006", "name": "fsr/python-lessons"}, {"directory": "ruby_lessons", "name": "fsr/ruby-lessons"}]
+[
+    {
+        "directory": "python_lessons",
+        "id": "00000006",
+        "name": "fsr/python-lessons",
+        "verify": false
+    },
+    {
+        "directory": "ruby_lessons",
+        "name": "fsr/ruby-lessons",
+        "verify": false
+    }
+]

@@ -14,7 +14,7 @@ CONFIG_NAME = 'build_conf.json'
 BUILD_TIMEOUT = 2 * 60  # seconds
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(format='[%(levelname)10s]:%(message)s')
+logging.basicConfig(format='[%(levelname)10s]:%(message)s', filename='builder.log')
 
 error_log_file = 'builder-error.log'
 info_log_file = 'builder.log'

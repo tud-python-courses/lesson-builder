@@ -1,6 +1,5 @@
 #!/usr/local/bin/python3
 
-import functools
 import json
 import cgi
 import cgitb
@@ -11,7 +10,6 @@ cgitb.enable()
 
 
 APP_DIRECTORY = '/Users/justusadam/projects/Ruby/lesson-builder'
-
 
 def relative(*args, to=APP_DIRECTORY):
     return os.path.join(to, *args)
@@ -63,6 +61,9 @@ def handle_payload(payload):
     if repo_name not in mapped:
         yield "Repository not on watchlist"
     else:
+        if not verify(mapped[repo_name]):
+            yield "Unknown requester"
+            raise StopIteration
         if 'id' not in mapped[repo_name]:
             mapped[repo_name]['id'] = repo['id']
             with open(conf_path, mode='w') as f:
@@ -105,10 +106,29 @@ def do(payload):
     apply(print, handle_payload(data))
 
 
+def verify(conf):
+    try:
+        return (
+            os.environ['HTTP_USER_AGENT'].startswith('GitHub-Hookshot/')
+            and (
+                not conf['verify']
+                or os.environ['HTTP_HEADERS']['X-Hub-Signature'] == conf.get('secret')
+            )
+        )
+    except KeyError as e:
+        logging.getLogger(__name__).error(
+            'Missing key {} in environ'.format(e)
+        )
+        logging.getLogger(__name__).debug(
+            str(os.environ)
+        )
+        return False
+
+
 def main():
     payload = cgi.FieldStorage().read_lines_to_eof()
     do(payload)
 
 if __name__ == '__main__':
-    main()
-    # cgi.test()
+    # main()
+    cgi.test()
