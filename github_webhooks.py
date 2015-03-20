@@ -14,12 +14,15 @@ APP_DIRECTORY = '/Users/justusadam/projects/Ruby/lesson-builder'
 WATCH_CONF_NAME = 'watch_conf.json'
 skip_strings = {'[skip build]', '[build skip]'}
 
+
 try:
     import build
 except ImportError:
     import sys
     sys.path.append(APP_DIRECTORY)
     import build
+
+build.DEBUG = False
 
 __author__ = 'Justus Adam'
 __version__ = '0.1'

@@ -1,5 +1,4 @@
 """build script for our lesson repositories"""
-import functools
 import json
 import os
 import re
@@ -17,11 +16,26 @@ BUILD_TIMEOUT = 2 * 60  # seconds
 logger = logging.getLogger(__name__)
 logging.basicConfig(format='[%(levelname)10s]:%(message)s')
 
+error_log_file = 'builder-error.log'
+info_log_file = 'builder.log'
+
 LATEX_OUTPUT = {
     'htlatex': 'html',
     'pdflatex': 'pdf',
     'xelatex': 'pdf'
 }
+
+
+def Popen(*args, **kwargs):
+    if DEBUG:
+        return subprocess.Popen(*args, **kwargs)
+    else:
+        return subprocess.Popen(
+            *args,
+            stderr=open(error_log_file, mode='w+'),
+            stdout=open(info_log_file, mode='w+'),
+            **kwargs
+        )
 
 
 def partition(condition, iterable, output_class=tuple):
@@ -60,11 +74,7 @@ class Build:
         if not os.path.exists(self.target_dir):
             os.makedirs(self.target_dir)
 
-        if not DEBUG:
-            cmd = functools.partial(subprocess.Popen, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        else:
-            cmd = subprocess.Popen
-        return file, cmd(
+        return file, Popen(
             (
                 self.command,
                 '-halt-on-error',
@@ -118,7 +128,7 @@ class GitRepository:
 
         :return: Executing process
         """
-        return subprocess.Popen(('git', '-C', directory, 'pull'))
+        return Popen(('git', '-C', directory, 'pull'))
 
     def aclone(self, into_dir=None):
         """
@@ -133,7 +143,7 @@ class GitRepository:
         action = ['git', 'clone', url]
         if into_dir:
             action.append(into_dir)
-        return subprocess.Popen(action)
+        return Popen(action)
 
     def refresh(self):
         proc = self.apull()
