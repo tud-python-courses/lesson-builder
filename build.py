@@ -6,14 +6,13 @@ import re
 import subprocess
 import itertools
 import logging
-import io
-import urllib
 
 
 DEBUG = True
 
 
 CONFIG_NAME = 'build_conf.json'
+BUILD_TIMEOUT = 2 * 60  # seconds
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format='[%(levelname)10s]:%(message)s')
@@ -57,6 +56,9 @@ class Build:
 
     def abuild_file(self, file):
         source = os.path.join(self.source_dir, file)
+
+        if not os.path.exists(self.target_dir):
+            os.makedirs(self.target_dir)
 
         if not DEBUG:
             cmd = functools.partial(subprocess.Popen, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -265,7 +267,10 @@ def build_and_report(wd):
 
     def finish_builds(builds):
         for file, process in builds:
-            yield file, process.wait()
+            try:
+                yield file, process.wait(BUILD_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                yield file, process.kill()
 
     def print_finished(builds):
         return '\n'.join(

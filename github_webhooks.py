@@ -1,3 +1,5 @@
+#!/usr/local/bin/python3
+
 import functools
 import json
 import cgi
@@ -5,9 +7,12 @@ import cgitb
 import logging
 import os
 
+cgitb.enable()
+
 
 APP_DIRECTORY = '/Users/justusadam/projects/Ruby/lesson-builder'
 WATCH_CONF_NAME = 'watch_conf.json'
+skip_strings = {'[skip build]', '[build skip]'}
 
 try:
     import build
@@ -29,6 +34,14 @@ def apply(function, iterable):
 
 
 def handle_payload(payload):
+    yield "Content-Type: \"text/html\""
+    yield ""
+
+    for skip_string in skip_strings:
+        if skip_string in payload['head_commit']['message']:
+            yield "Commit message demands skip"
+            raise StopIteration
+
     conf_path = relative(WATCH_CONF_NAME)
 
     with open(conf_path) as f:
@@ -41,16 +54,13 @@ def handle_payload(payload):
         a['name']: a for a in known
     }
 
-    yield "Content-Type: \"text/html\""
-    yield ""
-
     if repo_name not in mapped:
         yield "Repository not on watchlist"
     else:
         if 'id' not in mapped[repo_name]:
             mapped[repo_name]['id'] = repo['id']
             with open(conf_path, mode='w') as f:
-                json.dump(list(mapped.values()), f)
+                json.dump(list(mapped.values()), f, indent=4)
 
         repo_path = relative(mapped[repo_name]['directory'])
         repo_obj = build.GitRepository(repo_name)
@@ -73,7 +83,7 @@ def try_clone(repo, path):
 
 
 def try_pull(repo, path):
-    code = repo.apull(path)
+    code = repo.apull(path).wait()
     if code != 0:
         code = try_clone(repo, path)
     return code
@@ -83,10 +93,16 @@ def build_all(cwd):
     build.build_and_report(cwd)
 
 
-def main():
-    data = json.load(cgi.FieldStorage())
+def do(payload):
+    data = json.loads(payload)
 
     apply(print, handle_payload(data))
 
+
+def main():
+    payload = cgi.FieldStorage().read_lines_to_eof()
+    do(payload)
+
 if __name__ == '__main__':
     main()
+    # cgi.test()
