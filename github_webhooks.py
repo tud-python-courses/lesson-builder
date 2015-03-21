@@ -1,22 +1,37 @@
 #!/usr/local/bin/python3
 
+"""
+CGI Script handling github webhooks
+"""
+
 import json
 import cgi
-import cgitb
 import logging
 import os
 
+import cgitb
 cgitb.enable()
 
 
 APP_DIRECTORY = '/Users/justusadam/projects/Ruby/lesson-builder'
 
+
 def relative(*args, to=APP_DIRECTORY):
+    """
+    path relative to the APP_DIRECTORY or any other
+
+    convenience wrapper around os.path.join
+
+    :param args:
+    :param to:
+    :return:
+    """
     return os.path.join(to, *args)
+
 
 REPOS_DIRECTORY = relative('repos')
 WATCH_CONF_NAME = 'watch_conf.json'
-skip_strings = {'[skip build]', '[build skip]'}
+SKIP_STRINGS = {'[skip build]', '[build skip]'}
 
 
 try:
@@ -33,15 +48,28 @@ __version__ = '0.1'
 
 
 def apply(function, iterable):
+    """
+    Apply function to all elements of iterable
+
+    :param function:
+    :param iterable:
+    :return:
+    """
     for i in iterable:
         function(i)
 
 
 def handle_payload(payload):
+    """
+    Handle the payload received and yield a somewhat useful response
+
+    :param payload: parsed json
+    :return:
+    """
     yield "Content-Type: \"text/html\""
     yield ""
 
-    for skip_string in skip_strings:
+    for skip_string in SKIP_STRINGS:
         if skip_string in payload['head_commit']['message']:
             yield "Commit message demands skip"
             raise StopIteration
@@ -86,33 +114,60 @@ def handle_payload(payload):
 
 
 def try_clone(repo, path):
+    """
+    Clone a repository and wait for it to finish
+
+    :param repo: repository
+    :param path:
+    :return: returncode
+    """
     return repo.aclone(path).wait()
 
 
 def try_pull(repo, path):
+    """
+    Pull the repository and clone it if it fails
+
+    :param repo:
+    :param path:
+    :return: returncode
+    """
     code = repo.apull(path).wait()
     if code != 0:
         code = try_clone(repo, path)
     return code
 
 
-def build_all(cwd):
-    build.build_and_report(cwd)
-
-
 def do(payload):
+    """
+    Do what needs to be done
+
+    parse and handle the payload, print the results
+
+    :param payload:
+    :return: None
+    """
     data = json.loads(payload)
 
     apply(print, handle_payload(data))
 
 
 def verify(conf):
+    """
+    Verify whether the request contains the characteristic features
+    of an authentic Github hook and if set verifys the secret in the request
+    is authentic
+
+    :param conf: watch config
+    :return: boolean
+    """
     try:
         return (
             os.environ['HTTP_USER_AGENT'].startswith('GitHub-Hookshot/')
             and (
-                not conf['verify']
-                or os.environ['HTTP_HEADERS']['X-Hub-Signature'] == conf.get('secret')
+                not 'secret' in conf
+                or os.environ['HTTP_HEADERS']['X-Hub-Signature']
+                   == conf['secret']
             )
         )
     except KeyError as e:
@@ -126,9 +181,10 @@ def verify(conf):
 
 
 def main():
+    """Main function"""
     payload = cgi.FieldStorage().read_lines_to_eof()
     do(payload)
 
 if __name__ == '__main__':
-    # main()
-    cgi.test()
+    main()
+    # cgi.test()

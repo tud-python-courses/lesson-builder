@@ -13,13 +13,16 @@ DEBUG = True
 CONFIG_NAME = 'build_conf.json'
 BUILD_TIMEOUT = 2 * 60  # seconds
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(format='[%(levelname)10s]:%(message)s', filename='builder.log')
+LOGGER = logging.getLogger(__name__)
+logging.basicConfig(
+    format='[%(levelname)10s]:%(message)s',
+    filename='builder.log'
+)
 
-error_log_file = 'builder-error.log'
-info_log_file = 'builder.log'
+ERROR_LOG_FILE = 'builder-error.log'
+INFO_LOG_FILE = 'builder.log'
 
-LATEX_OUTPUT = {
+TEX_OUTPUT = {
     'htlatex': 'html',
     'pdflatex': 'pdf',
     'xelatex': 'pdf'
@@ -27,13 +30,21 @@ LATEX_OUTPUT = {
 
 
 def Popen(*args, **kwargs):
+    """
+    subprocess.Popen constructor that sets in- and output depending on whether
+    this is executed in DEBUG mode
+
+    :param args: constructor args
+    :param kwargs: constructor kwargs
+    :return: subprocess.Popen instance
+    """
     if DEBUG:
         return subprocess.Popen(*args, **kwargs)
     else:
         return subprocess.Popen(
             *args,
-            stderr=open(error_log_file, mode='w+'),
-            stdout=open(info_log_file, mode='w+'),
+            stderr=open(ERROR_LOG_FILE, mode='w+'),
+            stdout=open(INFO_LOG_FILE, mode='w+'),
             **kwargs
         )
 
@@ -61,14 +72,25 @@ def partition(condition, iterable, output_class=tuple):
 
 
 class Build:
+    """
+    Abstracts builds
+    """
     def __init__(self, name, command, target_dir, source_dir, files, base_dir=''):
         self.name = name
+        if command not in TEX_OUTPUT:
+            raise ValueError('Unrecognized TeX command {}'.format(command))
         self.command = command
         self.target_dir = os.path.join(base_dir, target_dir)
         self.source_dir = os.path.join(base_dir, source_dir)
         self.files = files
 
     def abuild_file(self, file):
+        """
+        Start a build of a single file and return the running process wrapper
+
+        :param file: file to build
+        :return:
+        """
         source = os.path.join(self.source_dir, file)
 
         if not os.path.exists(self.target_dir):
@@ -85,10 +107,16 @@ class Build:
         )
 
     def abuild(self):
+        """
+        Start this build and return a tuple of the running processes
+
+        :return:
+        """
         return tuple(self.abuild_file(file) for file in self.files)
 
 
 class GitRepository:
+    """Abstracts a git repository"""
     GIT_URL_REGEX = re.compile(
         '^\w+://(?P<host>\w+\.\w+)/(?P<name>[\w_-]+/[\w_-]+).git$'
     )
@@ -104,6 +132,11 @@ class GitRepository:
 
     @classmethod
     def from_url(cls, url):
+        """
+        Alternative constructor from the clone url
+        :param url:
+        :return:
+        """
         match = re.match(cls.GIT_URL_REGEX, url)
 
         return cls(
@@ -126,6 +159,7 @@ class GitRepository:
         """
         Perform git pull for this repository asynchronous
 
+        :param directory: directory to pull into
         :return: Executing process
         """
         return Popen(('git', '-C', directory, 'pull'))
@@ -134,6 +168,7 @@ class GitRepository:
         """
         Perform git clone for this repository asynchronous
 
+        :param into_dir: directory in which to clone
         :return: Executing process
         """
         if not self.name:
@@ -146,6 +181,11 @@ class GitRepository:
         return Popen(action)
 
     def refresh(self):
+        """
+        Pull or clone as appropriate (not async)
+
+        :return: None
+        """
         proc = self.apull()
         code = proc.wait()
         if not code == 0:
@@ -153,7 +193,7 @@ class GitRepository:
             code2 = proc2.wait()
 
             if not code2 == 0:
-                logger.error(
+                LOGGER.error(
                     'Pull and clone failed with {}'.format(code2)
                 )
                 return False
@@ -161,6 +201,9 @@ class GitRepository:
 
 
 class Include:
+    """
+    Abstract include
+    """
     def __init__(self, repository=None, directory=None, target_dir=None):
         self.repository = repository
         self.directory = directory
@@ -168,6 +211,14 @@ class Include:
 
     @classmethod
     def from_config(cls, git_url, directory=None, target_dir=None):
+        """
+        Alternative constructor from the config dict:
+
+        :param git_url: url
+        :param directory:
+        :param target_dir:
+        :return:
+        """
         return cls(
             GitRepository.from_url(git_url),
             directory,
@@ -175,7 +226,23 @@ class Include:
         )
 
     @classmethod
-    def realtive_to(cls, base_dir, git_url=None, directory=None, target_dir=None):
+    def realtive_to(
+            cls,
+            base_dir,
+            git_url=None,
+            directory=None,
+            target_dir=None
+    ):
+        """
+        Alternative constructor from the config arguments
+        relative to a directory
+
+        :param base_dir:
+        :param git_url:
+        :param directory:
+        :param target_dir:
+        :return:
+        """
         return cls.from_config(
             git_url,
             os.path.join(base_dir, directory),
@@ -208,7 +275,7 @@ def refresh_includes(includes):
     )
 
     for include, code in clone_failed:
-        logger.error(
+        LOGGER.error(
             'Pull and clone failed for {} with code {}'.format(
                 include.repository.name, code
             )
@@ -233,21 +300,33 @@ def refresh_includes(includes):
 
 
 def read_conf(wd):
+    """
+    Open the config file and return the json stuff within
+
+    :param wd:
+    :return:
+    """
     with open(os.path.join(wd, CONFIG_NAME)) as file:
         return json.load(file)
 
 
 def abuild_directory(wd):
+    """
+    Asynchronously build whats defined in the build_conf in that directory
+
+    :param wd: working directory
+    :return: executing builds
+    """
     try:
         conf = read_conf(wd)
     except ValueError as e:
-        logger.error(
+        LOGGER.error(
             'Could not parse config {} due to error {}'.format(
                 os.path.join(wd, CONFIG_NAME), e)
         )
         return ()
     except FileNotFoundError as e:
-        logger.error(e)
+        LOGGER.error(e)
         return ()
 
     includes_folder = os.path.join(wd, conf.get('includes_directory', ''))
@@ -261,7 +340,10 @@ def abuild_directory(wd):
         for include in refresh_includes(includes)
     ))
 
-    builds = tuple(Build(name, base_dir=wd, **b_conf) for name, b_conf in conf.get('builds', {}).items())
+    builds = tuple(
+        Build(name, base_dir=wd, **b_conf)
+        for name, b_conf in conf.get('builds', {}).items()
+    )
 
     building_own = tuple((b, b.abuild()) for b in builds)
 
@@ -269,20 +351,51 @@ def abuild_directory(wd):
 
 
 def output_from_command(file, command):
-    return file.rsplit('.', 1)[0] + '.' + LATEX_OUTPUT[command]
+    """
+    Construct the default file name for the output of an executed command
+
+    :param file: name of input file
+    :param command: executed command
+    :return: string name
+    """
+    return file.rsplit('.', 1)[0] + '.' + TEX_OUTPUT[command]
 
 
 def build_and_report(wd):
+    """
+    Build a directory and return some printable information on how it went
+
+    :param wd: working directory
+    :return:
+    """
     building = abuild_directory(wd)
 
     def finish_builds(builds):
+        """
+        Wait for the executing builds and collect the return codes
+
+        :param builds:
+        :return:
+        """
+        waited = False
         for file, process in builds:
             try:
-                yield file, process.wait(BUILD_TIMEOUT)
+                if waited:
+                    yield file, process.wait(0)
+                else:
+                    yield file, process.wait(BUILD_TIMEOUT)
             except subprocess.TimeoutExpired:
+                waited = True
                 yield file, process.kill()
 
     def print_finished(builds):
+        """
+        Transform the finished builds into some useful printable information
+        about their status
+
+        :param builds:
+        :return:
+        """
         return '\n'.join(
             'Build {} with {} files:\n      {}'.format(
                 build.name, len(building_files), '\n      '.join(
@@ -301,6 +414,7 @@ def build_and_report(wd):
 
 
 def main():
+    """Main function"""
     import sys
     script, wd, *l = sys.argv
     print(build_and_report(wd))
