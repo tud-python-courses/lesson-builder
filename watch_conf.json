@@ -1,11 +1,12 @@
 [
     {
+        "name": "fsr/python-lessons",
         "directory": "python_lessons",
-        "id": "00000006",
-        "name": "fsr/python-lessons"
+        "id": "898088"
     },
     {
+        "name": "fsr/ruby-lessons",
         "directory": "ruby_lessons",
-        "name": "fsr/ruby-lessons"
+        "id": "099989"
     }
 ]
