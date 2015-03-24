@@ -2,7 +2,7 @@ __author__ = 'Justus Adam'
 __version__ = '0.1'
 
 
-if __name__ == '__main__':
+def main():
     import unittest
     import sys
     import os
@@ -14,3 +14,9 @@ if __name__ == '__main__':
     import test
 
     unittest.main(test)
+
+
+if __name__ == '__main__':
+    main()
+else:
+    del main

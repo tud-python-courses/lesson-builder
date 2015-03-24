@@ -61,4 +61,4 @@ Gemfile.lock
 dynamic_content/
 repos/
 watch_conf.json
-#build_conf.json
+build_conf.json
