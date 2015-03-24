@@ -8,6 +8,7 @@ import json
 import cgi
 import logging
 import os
+import github
 
 import cgitb
 cgitb.enable()
@@ -36,12 +37,14 @@ SKIP_STRINGS = {'[skip build]', '[build skip]'}
 
 try:
     import build
+    import config
 except ImportError:
     import sys
     sys.path.append(APP_DIRECTORY)
     import build
+    import config
 
-build.DEBUG = False
+config.DEBUG = False
 
 __author__ = 'Justus Adam'
 __version__ = '0.1'
@@ -59,13 +62,15 @@ def apply(function, iterable):
         function(i)
 
 
-def handle_payload(payload):
+def handle_push(event):
     """
     Handle the payload received and yield a somewhat useful response
 
-    :param payload: parsed json
+    :param event: github.Event instace
     :return:
     """
+    payload = event.payload
+
     yield "Content-Type: \"text/html\""
     yield ""
 
@@ -98,7 +103,7 @@ def handle_payload(payload):
                 json.dump(list(mapped.values()), f, indent=4)
 
         repo_path = relative(mapped[repo_name]['directory'], to=REPOS_DIRECTORY)
-        repo_obj = build.GitRepository(repo_name)
+        repo_obj = github.GitRepository(repo_name)
 
         if not os.path.exists(repo_path):
             os.makedirs(repo_path)
@@ -138,6 +143,10 @@ def try_pull(repo, path):
     return code
 
 
+def handle_ping(event):
+    pass
+
+
 def do(payload):
     """
     Do what needs to be done
@@ -147,9 +156,12 @@ def do(payload):
     :param payload:
     :return: None
     """
-    data = json.loads(payload)
+    event = github.Event.from_request(json.loads(payload))
 
-    apply(print, handle_payload(data))
+    if event.type == github.PUSH:
+        apply(print, handle_push(event))
+    elif event.type == github.PING:
+        apply(print, handle_ping(event))
 
 
 def verify(conf):

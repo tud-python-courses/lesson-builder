@@ -1,52 +1,19 @@
 """build script for our lesson repositories"""
 import json
 import os
-import re
 import subprocess
 import itertools
 import logging
-
-
-DEBUG = True
-
-
-CONFIG_NAME = 'build_conf.json'
-BUILD_TIMEOUT = 2 * 60  # seconds
+import github
+import config
 
 LOGGER = logging.getLogger(__name__)
-logging.basicConfig(
-    format='[%(levelname)10s]:%(message)s',
-    filename='builder.log'
-)
-
-ERROR_LOG_FILE = 'builder-error.log'
-INFO_LOG_FILE = 'builder.log'
 
 TEX_OUTPUT = {
     'htlatex': 'html',
     'pdflatex': 'pdf',
     'xelatex': 'pdf'
 }
-
-
-def Popen(*args, **kwargs):
-    """
-    subprocess.Popen constructor that sets in- and output depending on whether
-    this is executed in DEBUG mode
-
-    :param args: constructor args
-    :param kwargs: constructor kwargs
-    :return: subprocess.Popen instance
-    """
-    if DEBUG:
-        return subprocess.Popen(*args, **kwargs)
-    else:
-        return subprocess.Popen(
-            *args,
-            stderr=open(ERROR_LOG_FILE, mode='w+'),
-            stdout=open(INFO_LOG_FILE, mode='w+'),
-            **kwargs
-        )
 
 
 def partition(condition, iterable, output_class=tuple):
@@ -96,11 +63,11 @@ class Build:
         if not os.path.exists(self.target_dir):
             os.makedirs(self.target_dir)
 
-        return file, Popen(
+        return file, subprocess.Popen(
             (
                 self.command,
                 '-halt-on-error',
-                '-interaction', 'nonstopmode',
+                '-interaction=nonstopmode',
                 '-output-directory', self.target_dir,
                 source
             )
@@ -112,92 +79,9 @@ class Build:
 
         :return:
         """
+        if not os.path.exists(self.target_dir):
+            os.makedirs(self.target_dir)
         return tuple(self.abuild_file(file) for file in self.files)
-
-
-class GitRepository:
-    """Abstracts a git repository"""
-    GIT_URL_REGEX = re.compile(
-        '^\w+://(?P<host>\w+\.\w+)/(?P<name>[\w_-]+/[\w_-]+).git$'
-    )
-
-    host_urls = {
-        'github.com': 'https://github.com'
-    }
-
-    """Model for git repository"""
-    def __init__(self, name, host='github.com'):
-        self.name = name
-        self.host = host
-
-    @classmethod
-    def from_url(cls, url):
-        """
-        Alternative constructor from the clone url
-        :param url:
-        :return:
-        """
-        match = re.match(cls.GIT_URL_REGEX, url)
-
-        return cls(
-            name=match.group('name'),
-            host=match.group('host')
-        )
-
-
-    @staticmethod
-    def dir_from_url(url):
-        """
-        Construct the standard directory a git repository would have
-
-        :param url: the url of the git repository
-        :return: directory name
-        """
-        return url.rsplit('.', 1)[0].rsplit('/', 1)[1]
-
-    def apull(self, directory='.'):
-        """
-        Perform git pull for this repository asynchronous
-
-        :param directory: directory to pull into
-        :return: Executing process
-        """
-        return Popen(('git', '-C', directory, 'pull'))
-
-    def aclone(self, into_dir=None):
-        """
-        Perform git clone for this repository asynchronous
-
-        :param into_dir: directory in which to clone
-        :return: Executing process
-        """
-        if not self.name:
-            raise ValueError('Cannot clone without url')
-        url = self.host_urls[self.host] + '/' + self.name + '.git'
-
-        action = ['git', 'clone', url]
-        if into_dir:
-            action.append(into_dir)
-        return Popen(action)
-
-    def refresh(self):
-        """
-        Pull or clone as appropriate (not async)
-
-        :return: None
-        """
-        proc = self.apull()
-        code = proc.wait()
-        if not code == 0:
-            proc2 = self.aclone()
-            code2 = proc2.wait()
-
-            if not code2 == 0:
-                LOGGER.error(
-                    'Pull and clone failed with {}'.format(code2)
-                )
-                return False
-        return True
 
 
 class Include:
@@ -220,7 +104,7 @@ class Include:
         :return:
         """
         return cls(
-            GitRepository.from_url(git_url),
+            github.GitRepository.from_url(git_url),
             directory,
             target_dir
         )
@@ -261,12 +145,14 @@ def refresh_includes(includes):
     pull_results = map(
         lambda a: (a[0], a[1].wait()),
         # starting pulls
-        ((r, r.repository.apull()) for r in includes)
+        tuple((i, i.repository.apull(i.directory)) for i in includes)
     )
     pull_success, pull_failed = partition(lambda a: a[1] == 0, pull_results)
     clone_results = map(
         lambda a: (a[0], a[1].wait()),
-        tuple(map(lambda a: (a[0], a[0].repository.aclone()), pull_failed))
+        tuple(
+            (include, include.repository.aclone(include.directory))
+            for include, status in pull_failed)
     )
 
     clone_success, clone_failed = partition(
@@ -289,15 +175,6 @@ def refresh_includes(includes):
         )
     )
 
-    # logger.info(
-    #     'Building includes: {}'.format(
-    #         ', '.join(directories)
-    #     )
-    # )
-    #
-    # for directory in directories:
-    #     build_directory(directory)
-
 
 def read_conf(wd):
     """
@@ -306,7 +183,7 @@ def read_conf(wd):
     :param wd:
     :return:
     """
-    with open(os.path.join(wd, CONFIG_NAME)) as file:
+    with open(os.path.join(wd, config.CONFIG_NAME)) as file:
         return json.load(file)
 
 
@@ -322,7 +199,7 @@ def abuild_directory(wd):
     except ValueError as e:
         LOGGER.error(
             'Could not parse config {} due to error {}'.format(
-                os.path.join(wd, CONFIG_NAME), e)
+                os.path.join(wd, config.CONFIG_NAME), e)
         )
         return ()
     except FileNotFoundError as e:
@@ -383,7 +260,7 @@ def build_and_report(wd):
                 if waited:
                     yield file, process.wait(0)
                 else:
-                    yield file, process.wait(BUILD_TIMEOUT)
+                    yield file, process.wait(config.BUILD_TIMEOUT)
             except subprocess.TimeoutExpired:
                 waited = True
                 yield file, process.kill()

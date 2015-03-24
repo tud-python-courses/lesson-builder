@@ -8,5 +8,9 @@
         "name": "fsr/ruby-lessons",
         "directory": "ruby_lessons",
         "id": "099989"
+    },
+    {
+        "name": "fsr/c-lessons",
+        "directory": "c_lessons"
     }
 ]
