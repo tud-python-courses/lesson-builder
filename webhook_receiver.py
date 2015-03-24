@@ -2,13 +2,15 @@
 
 """
 CGI Script handling github webhooks
+
+this script mainly takes care of in- and output
+and hands off most of the actual work to the lesson_builder package
 """
 
 import json
 import cgi
 import logging
 import os
-import github
 
 import cgitb
 cgitb.enable()
@@ -36,15 +38,18 @@ SKIP_STRINGS = {'[skip build]', '[build skip]'}
 
 
 try:
-    import build
-    import config
+    # I don't know why I try to import here, but might as well
+    import lesson_builder
 except ImportError:
     import sys
     sys.path.append(APP_DIRECTORY)
-    import build
-    import config
+    import lesson_builder
 
-config.DEBUG = False
+
+github = lesson_builder.github
+build = lesson_builder.build
+
+lesson_builder.config.DEBUG = False
 
 __author__ = 'Justus Adam'
 __version__ = '0.1'
@@ -62,11 +67,12 @@ def apply(function, iterable):
         function(i)
 
 
-def handle_push(event):
+def handle_push(event, raw_data):
     """
     Handle the payload received and yield a somewhat useful response
 
     :param event: github.Event instace
+    :param raw_data: raw bytes of the message
     :return:
     """
     payload = event.payload
@@ -94,7 +100,12 @@ def handle_push(event):
     if repo_name not in mapped:
         yield "Repository not on watchlist"
     else:
-        if not verify(mapped[repo_name]):
+        if not github.verify(
+                mapped[repo_name],
+                raw_data,
+                os.environ['HTTP_HEADERS'],
+                os.environ['HTTP_USER_AGENT']
+        ):
             yield "Unknown requester"
             raise StopIteration
         if 'id' not in mapped[repo_name]:
@@ -159,37 +170,9 @@ def do(payload):
     event = github.Event.from_request(json.loads(payload))
 
     if event.type == github.PUSH:
-        apply(print, handle_push(event))
+        apply(print, handle_push(event, payload))
     elif event.type == github.PING:
         apply(print, handle_ping(event))
-
-
-def verify(conf):
-    """
-    Verify whether the request contains the characteristic features
-    of an authentic Github hook and if set verifys the secret in the request
-    is authentic
-
-    :param conf: watch config
-    :return: boolean
-    """
-    try:
-        return (
-            os.environ['HTTP_USER_AGENT'].startswith('GitHub-Hookshot/')
-            and (
-                not 'secret' in conf
-                or os.environ['HTTP_HEADERS']['X-Hub-Signature']
-                   == conf['secret']
-            )
-        )
-    except KeyError as e:
-        logging.getLogger(__name__).error(
-            'Missing key {} in environ'.format(e)
-        )
-        logging.getLogger(__name__).debug(
-            str(os.environ)
-        )
-        return False
 
 
 def main():

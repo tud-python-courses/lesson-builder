@@ -1,7 +1,12 @@
 import functools
+import hmac
+import json
 import logging
+
 import re
 import subprocess
+import urllib.request
+import hashlib
 
 __author__ = 'Justus Adam'
 __version__ = '0.1'
@@ -16,10 +21,16 @@ PUSH = 'PushEvent'
 PING = 'ping'
 
 
+SAVE_GITHUB_API_BASE_URL = 'https://api.github.com'
+
+
 _event_types = {
     PUSH,
     PING
 }
+
+
+DIGEST_ENCRYPTION_ALGORITHM = hashlib.sha1
 
 
 Popen = functools.partial(
@@ -31,12 +42,20 @@ Popen = functools.partial(
 
 class Event:
     """A Github event"""
+    names = {
+        PUSH: 'push',
+        PING: 'ping'
+    }
+
     def __init__(self, type, payload, repo):
         if type not in _event_types:
             raise ValueError('Unrecognized event type {}'.format(type))
         self.type = type
         self.payload = payload
         self.repo = repo
+
+    def identifier(self):
+        return self.names[self.type]
 
     @property
     def repository(self):
@@ -152,3 +171,93 @@ class GitRepository:
                 )
                 return False
         return True
+
+
+def webhook_config(url, content_type='json', secret=None, insecure_ssl='0'):
+    c = {
+        'url': url,
+        'content_type': content_type,
+        'insecure_ssl': insecure_ssl
+    }
+    if secret is not None:
+        c['secret'] = secret
+    return c
+
+
+class Webhook:
+    def __init__(
+            self,
+            repo:GitRepository,
+            name,
+            config,
+            events=(),
+            active=False
+    ):
+        self.name = name
+        self.config = config
+        self.events = events
+        self.active = active
+        self.repo = repo
+
+    @classmethod
+    def create(cls, name, config, events, active):
+        obj = cls(name, config, events, active)
+        obj.activate_remote()
+        return obj
+
+    def to_json(self):
+        return json.dumps({
+            'name': self.name,
+            'config': self.config,
+            'events': self.events_to_json(),
+            'active': True
+        })
+
+    def events_to_json(self):
+        return tuple(event.identifier() for event in self.events)
+
+    def activate_remote(self):
+        url = '{base}/repos/{name}/hooks'.format(
+            base=SAVE_GITHUB_API_BASE_URL,
+            name=self.repo.name
+        )
+        data = self.to_json()
+        request = urllib.request.Request(
+            url,
+            data=data,
+            method='post'
+        )
+        urllib.request.urlopen(request)
+
+
+def verify(conf, data, headers, user_agent):
+    """
+    Verify whether the request contains the characteristic features
+    of an authentic Github hook and if set verifies the secret in the request
+    is authentic
+
+    :param conf: watch config
+    :param data: raw input data
+    :return: boolean
+    """
+    try:
+        if user_agent.startswith('GitHub-Hookshot/'):
+            if 'secret' in conf:
+                signature = headers['X-Hub-Signature']
+                computed = hmac.new(
+                    conf['secret'],
+                    data,
+                    DIGEST_ENCRYPTION_ALGORITHM
+                ).hexdigest()
+                return computed == signature
+            else:
+                return True
+        return False
+    except KeyError as e:
+        logging.getLogger(__name__).error(
+            'Missing key {} in environ'.format(e)
+        )
+        logging.getLogger(__name__).debug(
+            'Headers: {}\nUserAgent: {}'.format(headers, user_agent)
+        )
+        return False

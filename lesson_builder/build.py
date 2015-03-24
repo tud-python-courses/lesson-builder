@@ -4,8 +4,7 @@ import os
 import subprocess
 import itertools
 import logging
-import github
-import config
+from . import github, config
 
 LOGGER = logging.getLogger(__name__)
 
