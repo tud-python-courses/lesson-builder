@@ -287,13 +287,3 @@ def build_and_report(wd):
         )
 
     return print_finished(building)
-
-
-def main():
-    """Main function"""
-    import sys
-    script, wd, *l = sys.argv
-    print(build_and_report(wd))
-
-if __name__ == '__main__':
-    main()
