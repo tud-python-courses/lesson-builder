@@ -170,23 +170,27 @@ def do(payload):
     event = github.Event.from_request(json.loads(payload))
 
     if event.type == github.PUSH:
-        apply(print, handle_push(event, payload))
+        return handle_push(event, payload)
     elif event.type == github.PING:
-        apply(print, handle_ping(event))
+        return handle_ping(event)
 
 
 def hello():
-    print('<h1>This is the webhook receiver</h1>')
-    print('I dont think you\'ll want to reach me this way.')
+    yield "Content-Type: \"text/html\""
+    yield ""
+    yield '<h1>This is the webhook receiver</h1>'
+    yield 'I dont think you\'ll want to reach me this way.'
 
 
 def main():
     """Main function"""
     payload = cgi.FieldStorage().read_lines_to_eof()
     if not payload:
-        hello()
+        gen = hello()
     else:
-        do(payload)
+        gen = do(payload)
+
+    apply(print, gen)
 
 if __name__ == '__main__':
     main()
