@@ -77,7 +77,7 @@ def handle_push(event, raw_data):
     """
     payload = event.payload
 
-    yield "Content-Type: \"text/html\""
+    yield "Content-Type: text/html"
     yield ""
 
     for skip_string in SKIP_STRINGS:
@@ -192,6 +192,6 @@ def main():
 
     apply(print, gen)
 
-if __name__ == '__main__':
-    main()
+#if __name__ == '__main__':
+main()
     # cgi.test()
