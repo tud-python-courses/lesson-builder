@@ -175,10 +175,18 @@ def do(payload):
         apply(print, handle_ping(event))
 
 
+def hello():
+    print('<h1>This is the webhook receiver</h1>')
+    print('I dont think you\'ll want to reach me this way.')
+
+
 def main():
     """Main function"""
     payload = cgi.FieldStorage().read_lines_to_eof()
-    do(payload)
+    if not payload:
+        hello()
+    else:
+        do(payload)
 
 if __name__ == '__main__':
     main()
