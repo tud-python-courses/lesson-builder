@@ -173,7 +173,7 @@ def do(payload):
 
 
 def ok(head=None, body=None):
-    yield "Content-Type: text/html"
+    yield "Content-Type: text/html;charset=utf-8"
     yield ""
     yield '<html><head>'
     if head is not None:
