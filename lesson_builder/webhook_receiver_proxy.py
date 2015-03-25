@@ -5,9 +5,6 @@ this script mainly takes care of in- and output
 and hands off most of the actual work to the lesson_builder package
 """
 
-
-
-
 import cgi
 import json
 import logging
@@ -21,6 +18,9 @@ from . import github, build, config
 
 APP_DIRECTORY = config.BASE_DIRECTORY
 
+__author__ = 'Justus Adam'
+__version__ = '0.1'
+
 
 def relative(*args, to=APP_DIRECTORY):
     """
@@ -32,7 +32,7 @@ def relative(*args, to=APP_DIRECTORY):
     :param to:
     :return:
     """
-    return os.path.join(to, *args)
+    return os.path.abspath(os.path.join(to, *args))
 
 
 REPOS_DIRECTORY = relative('repos')
@@ -41,9 +41,6 @@ SKIP_STRINGS = {'[skip build]', '[build skip]'}
 
 
 config.DEBUG = False
-
-__author__ = 'Justus Adam'
-__version__ = '0.1'
 
 
 def apply(function, iterable):

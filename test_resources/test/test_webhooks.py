@@ -1,8 +1,7 @@
 import json
 import os
 import unittest
-import webhook_receiver
-from lesson_builder import github
+from lesson_builder import github, webhook_receiver_proxy
 
 __author__ = 'Justus Adam'
 __version__ = '0.1'
@@ -36,7 +35,7 @@ class TestHook(unittest.TestCase):
                 )
             self.assertIn(
                 'Build finished',
-                tuple(webhook_receiver.handle_push(event, string))
+                tuple(webhook_receiver_proxy.handle_push(event, string))
             )
 
     def test_skip(self):
@@ -47,5 +46,5 @@ class TestHook(unittest.TestCase):
             event = github.Event.from_request(json.loads(string))
             self.assertIn(
                 'Commit message demands skip',
-                tuple(webhook_receiver.handle_push(event, string))
+                tuple(webhook_receiver_proxy.handle_push(event, string))
             )
