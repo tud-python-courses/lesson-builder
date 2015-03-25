@@ -77,9 +77,6 @@ def handle_push(event, raw_data):
     """
     payload = event.payload
 
-    yield "Content-Type: text/html"
-    yield ""
-
     for skip_string in SKIP_STRINGS:
         if skip_string in payload['head_commit']['message']:
             yield "Commit message demands skip"
@@ -175,9 +172,19 @@ def do(payload):
         return handle_ping(event)
 
 
-def hello():
+def ok(head=None, body=None):
     yield "Content-Type: text/html"
     yield ""
+    yield '<html><head>'
+    if head is not None:
+        yield from head
+    yield '</head><body>'
+    if body is not None:
+        yield from body
+    yield '</body></html>'
+
+
+def hello():
     yield '<h1>This is the webhook receiver</h1>'
     yield 'I dont think you\'ll want to reach me this way.'
 
@@ -186,12 +193,12 @@ def main():
     """Main function"""
     payload = cgi.FieldStorage().read_lines_to_eof()
     if not payload:
-        gen = hello()
+        gen = ok(body=hello())
     else:
-        gen = do(payload)
+        gen = ok(body=do(payload))
 
     apply(print, gen)
 
-#if __name__ == '__main__':
-main()
+if __name__ == '__main__':
+    main()
     # cgi.test()
