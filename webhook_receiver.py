@@ -176,7 +176,7 @@ def do(payload):
 
 
 def hello():
-    yield "Content-Type: \"text/html\""
+    yield "Content-Type: text/html"
     yield ""
     yield '<h1>This is the webhook receiver</h1>'
     yield 'I dont think you\'ll want to reach me this way.'
