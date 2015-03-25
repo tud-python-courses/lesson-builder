@@ -1,5 +1,3 @@
-#!/usr/local/bin/python3
-
 """
 CGI Script handling github webhooks
 
@@ -7,16 +5,21 @@ this script mainly takes care of in- and output
 and hands off most of the actual work to the lesson_builder package
 """
 
-import json
+
+
+
 import cgi
+import json
 import logging
 import os
 
 import cgitb
 cgitb.enable()
 
+from . import github, build, config
 
-APP_DIRECTORY = '/Users/justusadam/projects/Ruby/lesson-builder'
+
+APP_DIRECTORY = config.BASE_DIRECTORY
 
 
 def relative(*args, to=APP_DIRECTORY):
@@ -37,19 +40,7 @@ WATCH_CONF_NAME = 'watch_conf.json'
 SKIP_STRINGS = {'[skip build]', '[build skip]'}
 
 
-try:
-    # I don't know why I try to import here, but might as well
-    import lesson_builder
-except ImportError:
-    import sys
-    sys.path.append(APP_DIRECTORY)
-    import lesson_builder
-
-
-github = lesson_builder.github
-build = lesson_builder.build
-
-lesson_builder.config.DEBUG = False
+config.DEBUG = False
 
 __author__ = 'Justus Adam'
 __version__ = '0.1'
@@ -189,7 +180,7 @@ def hello():
     yield 'I dont think you\'ll want to reach me this way.'
 
 
-def main():
+def handle_request():
     """Main function"""
     payload = cgi.FieldStorage().read_lines_to_eof()
     if not payload:
@@ -198,7 +189,3 @@ def main():
         gen = ok(body=do(payload))
 
     apply(print, gen)
-
-if __name__ == '__main__':
-    main()
-    # cgi.test()

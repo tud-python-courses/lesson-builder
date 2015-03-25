@@ -1,0 +1,19 @@
+#!/usr/local/bin/python3
+
+
+APP_DIRECTORY = 'insert the location of the build script directory'
+
+
+def main():
+    import sys
+    sys.path.insert(0, APP_DIRECTORY)
+    
+    from lesson_builder import webhook_receiver_proxy
+    
+    webhook_receiver_proxy.handle_request()
+
+
+if __name__ == '__main__':
+    
+    main()
+    # cgi.test()
