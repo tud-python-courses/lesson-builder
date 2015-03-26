@@ -196,10 +196,19 @@ def ok(head='', body=''):
     ))
 
 
+def get_content_type():
+    aliases = ('Content-Type', 'content-type')
+    for alias in aliases:
+        if alias in os.environ:
+            return os.environ[alias]
+    else:
+        raise KeyError
+
+
 def handle_request():
     """Main function"""
 
-    _, ce = cgi.parse_header(os.environ['Content-Type'])
+    _, ce = cgi.parse_header(get_content_type())
     payload = sys.stdin.read().decode(ce.get('charset', 'utf-8'))
     if not payload:
         ok(body=hello)
