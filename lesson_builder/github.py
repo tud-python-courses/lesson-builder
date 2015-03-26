@@ -12,7 +12,7 @@ __author__ = 'Justus Adam'
 __version__ = '0.1'
 
 
-DEBUG = True
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -31,7 +31,7 @@ Popen = functools.partial(
     subprocess.Popen,
     stdout=subprocess.PIPE,
     stderr=subprocess.PIPE
-) if not DEBUG else subprocess.Popen
+)
 
 
 class Event:

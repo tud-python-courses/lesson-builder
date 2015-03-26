@@ -13,7 +13,10 @@ import os
 from . import github, build, config
 
 
-APP_DIRECTORY = config.BASE_DIRECTORY
+# has to be the directory of this programs git repo root
+_app_repo_root = APP_DIRECTORY = config.BASE_DIRECTORY
+
+THIS_REPO_NAME = 'fsr/lesson-builder'
 
 LOGGER = logging.getLogger(__name__)
 
@@ -81,6 +84,9 @@ def handle_push(event, raw_data):
     repo_data = payload['repository']
     repo = github.GitRepository(repo_data['full_name'])
 
+    if repo.name in special_actions:
+        return special_actions[repo.name](repo)
+
     known = get_watch_conf().get('watched', ())
 
     mapped = {
@@ -116,24 +122,40 @@ def handle_push(event, raw_data):
         write_watch_conf(list(mapped.values()))
 
     repo_path = relative(mapped[repo.name]['directory'], to=REPOS_DIRECTORY)
-    repo_obj = github.GitRepository(repo.name)
 
     if not os.path.exists(repo_path):
         os.makedirs(repo_path)
-        code = try_clone(repo_obj, repo_path)
+        code = try_clone(repo, repo_path)
     else:
-        code = try_pull(repo_obj, repo_path)
+        code = try_pull(repo, repo_path)
 
     if code != 0:
         LOGGER.error(
             'Clone for repository {} in directory {} failed with {}'.format(
-                repo_obj.name, repo_path, code
+                repo.name, repo_path, code
             )
         )
         return "Git operations failed"
     else:
         LOGGER.info(build.build_and_report(repo_path))
         return "Build finished"
+
+
+def update(r):
+    p = r.apull(_app_repo_root)
+    code = p.wait()
+    if code != 0:
+        LOGGER.critical(
+            'Update failed with code {} and message:\n{}'.format(
+                code, p.stdout.read().decode()
+            )
+        )
+        return 'Update failed'
+    else:
+        LOGGER.info(
+            'Update successful'
+        )
+        return "Update successful"
 
 
 def try_clone(repo, path):
@@ -247,6 +269,11 @@ aliases = {
     EVENT_TYPE: ('X-GitHub-Event', 'X_GITHUB_EVENT', 'HTTP_X_GITHUB_EVENT'),
     CONTENT_TYPE: ('Content-Type', 'content-type', 'CONTENT_TYPE'),
     SIGNATURE: ('X-Hub-Signature', 'HTTP_X_HUB_SIGNATURE')
+}
+
+
+special_actions = {
+    _app_repo_root: update
 }
 
 
