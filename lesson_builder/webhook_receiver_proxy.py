@@ -5,7 +5,7 @@ this script mainly takes care of in- and output
 and hands off most of the actual work to the build module
 """
 
-import cgi
+import sys
 import json
 import logging
 import os
@@ -85,7 +85,7 @@ def handle_push(event, raw_data):
         if not github.verify(
                 mapped[repo_name],
                 raw_data,
-                os.environ['HTTP_HEADERS'],
+                os.environ,
                 os.environ['HTTP_USER_AGENT']
         ):
             yield "Unknown requester"
@@ -196,7 +196,11 @@ def ok(head='', body=''):
 
 def handle_request():
     """Main function"""
-    payload = cgi.FieldStorage().read_lines_to_eof()
+
+    import os, cgi, sys
+    cl, _ = cgi.parse_header(os.environ['Content-Length'])
+    _, ce = cgi.parse_header(os.environ['Content-Type'])
+    payload = sys.stdin.read(int(cl)).decode(ce.get('charset', 'utf-8'))
     if not payload:
         ok(body=hello)
     else:
