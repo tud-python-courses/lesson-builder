@@ -9,6 +9,8 @@ import sys
 import json
 import logging
 import os
+import cgi
+import html
 
 from . import github, build, config
 
@@ -190,17 +192,15 @@ def ok(head='', body=''):
     print('')
     print(ok_format_string.format(
         head=head,
-        body=body
+        body=html.escape(body)
     ))
 
 
 def handle_request():
     """Main function"""
 
-    import os, cgi, sys
-    cl, _ = cgi.parse_header(os.environ['Content-Length'])
     _, ce = cgi.parse_header(os.environ['Content-Type'])
-    payload = sys.stdin.read(int(cl)).decode(ce.get('charset', 'utf-8'))
+    payload = sys.stdin.read().decode(ce.get('charset', 'utf-8'))
     if not payload:
         ok(body=hello)
     else:
