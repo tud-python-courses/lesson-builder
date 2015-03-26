@@ -105,6 +105,9 @@ def handle_push(event, raw_data):
     }
 
     if repo.name not in mapped:
+        LOGGER.error(
+            'Repository {} not on watchlist'.format(repo.name)
+        )
         return "Repository not on watchlist"
 
     for skip_string in SKIP_STRINGS:
