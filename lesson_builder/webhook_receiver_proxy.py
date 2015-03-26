@@ -202,7 +202,7 @@ def get_content_type():
         if alias in os.environ:
             return os.environ[alias]
     else:
-        raise KeyError
+        raise KeyError(str(os.environ))
 
 
 def handle_request():
