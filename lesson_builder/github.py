@@ -18,7 +18,7 @@ LOGGER = logging.getLogger(__name__)
 
 # define the name of github events
 PUSH = 'PushEvent'
-PING = 'ping'
+PING = 'PingEvent'
 
 
 SAVE_GITHUB_API_BASE_URL = 'https://api.github.com'

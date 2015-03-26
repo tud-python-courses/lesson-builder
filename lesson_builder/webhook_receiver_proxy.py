@@ -137,7 +137,10 @@ def try_pull(repo, path):
 
 
 def handle_ping(event):
-    pass
+    logging.getLogger(__name__).info(
+        'Received ping event with payload\n{}'.format(event.payload)
+    )
+    yield 'Ping Received'
 
 
 def do(payload):
