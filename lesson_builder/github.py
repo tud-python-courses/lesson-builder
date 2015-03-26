@@ -99,7 +99,7 @@ class GitRepository:
     @classmethod
     def from_json(cls, json):
         return cls(
-            name=json['name'],
+            name=json['full_name'],
             id=json['id'],
             api_url=json['url']
         )

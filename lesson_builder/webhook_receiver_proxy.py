@@ -71,6 +71,18 @@ def write_watch_conf(data):
         json.dump(data, f, indent=4)
 
 
+def is_known(name, watch_conf=None):
+    if watch_conf is None:
+        watch_conf = get_watch_conf()
+
+    known = get_watch_conf().get('watched', ())
+
+    mapped = {
+        a['name'] for a in known
+    }
+    return name in mapped
+
+
 def handle_push(event, raw_data):
     """
     Handle the payload received and return a somewhat useful response
@@ -82,7 +94,7 @@ def handle_push(event, raw_data):
     payload = event.payload
 
     repo_data = payload['repository']
-    repo = github.GitRepository(repo_data['full_name'])
+    repo = event.repo
 
     if repo.name in special_actions:
         return special_actions[repo.name](repo)
@@ -185,19 +197,31 @@ def try_pull(repo, path):
 
 def handle_ping(event):
     hook_id = event.payload['hook_id']
+    repo_name = event.repo.name
 
-    LOGGER.info(
-        'Received ping event for hook {}'.format(hook_id)
-    )
+    watch_conf = get_watch_conf()
 
-    directory = get_watch_conf().get('data_directory', _default_data_directory)
+    directory = watch_conf.get('data_directory', _default_data_directory)
     file_path = relative(directory, 'hook_{}.conf.json'.format(hook_id))
+
     if os.path.exists(file_path):
         mode = 'w'
     else:
         mode = 'w+'
     with open(file_path, mode=mode) as file:
         json.dump(event.payload['hook'], fp=file, indent=4)
+
+    LOGGER.info(
+        'Received ping event:\n'
+        'repository: {}\n'
+        'hook_id: {}\n'
+        'data saved in {}\n'
+        'watched: {}'.format(
+            repo_name, hook_id, file_path,
+            is_known(repo_name, watch_conf) or repo_name in special_actions
+        )
+    )
+
     return 'Ping Received'
 
 
