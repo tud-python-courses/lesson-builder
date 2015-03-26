@@ -160,9 +160,10 @@ def do(payload):
         return handle_ping(event)
 
 
-ok_format_string = """
-Content-Type: text/html; charset=utf-8
+ok_headers = 'Content-Type: text/html; charset=utf-8'
 
+
+ok_format_string = """
 <html>
 <head>
 {head}
@@ -181,18 +182,18 @@ I don't think you'll want to reach me this way.
 
 
 def ok(head='', body=''):
-    return ok_format_string.format(
+    print(ok_headers)
+    print('')
+    print(ok_format_string.format(
         head=head,
         body=body
-    )
+    ))
 
 
 def handle_request():
     """Main function"""
     payload = cgi.FieldStorage().read_lines_to_eof()
     if not payload:
-        message = ok(body=hello)
+        ok(body=hello)
     else:
-        message = ok(body=''.join(do(payload)))
-
-    print(message)
+        ok(body=''.join(do(payload)))
