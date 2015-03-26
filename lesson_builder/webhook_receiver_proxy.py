@@ -253,7 +253,7 @@ def get_header(name):
 def handle_request():
     """Main function"""
 
-    _, ce = cgi.parse_header(get_header(CONTENT_TYPE))
+    # _, ce = cgi.parse_header(get_header(CONTENT_TYPE))
     payload = sys.stdin.read()
     if not payload:
         ok(body=hello)
