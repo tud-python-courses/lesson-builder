@@ -197,7 +197,7 @@ def ok(head='', body=''):
 
 
 def get_content_type():
-    aliases = ('Content-Type', 'content-type')
+    aliases = ('Content-Type', 'content-type', 'CONTENT_TYPE')
     for alias in aliases:
         if alias in os.environ:
             return os.environ[alias]
