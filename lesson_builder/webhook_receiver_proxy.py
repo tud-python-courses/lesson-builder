@@ -87,7 +87,7 @@ def handle_push(event, raw_data):
         if not github.verify(
                 mapped[repo_name],
                 raw_data,
-                os.environ,
+                get_header(SIGNATURE),
                 os.environ['HTTP_USER_AGENT']
         ):
             yield "Unknown requester"
@@ -203,11 +203,13 @@ def ok(head='', body=''):
 
 CONTENT_TYPE = 'ct'
 EVENT_TYPE = 'event'
+SIGNATURE = 'signature'
 
 
 aliases = {
     EVENT_TYPE: ('X-GitHub-Event', 'X_GITHUB_EVENT', 'HTTP_X_GITHUB_EVENT'),
-    CONTENT_TYPE: ('Content-Type', 'content-type', 'CONTENT_TYPE')
+    CONTENT_TYPE: ('Content-Type', 'content-type', 'CONTENT_TYPE'),
+    SIGNATURE: ('X-Hub-Signature', 'HTTP_X_HUB_SIGNATURE')
 }
 
 
@@ -225,7 +227,6 @@ def get_header(name):
         )
 
 
-
 def handle_request():
     """Main function"""
 
@@ -234,4 +235,4 @@ def handle_request():
     if not payload:
         ok(body=hello)
     else:
-        ok(body=''.join(do(payload)))
+        '\n'.join(do(payload))

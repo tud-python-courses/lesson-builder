@@ -216,7 +216,7 @@ class Webhook:
         urllib.request.urlopen(request)
 
 
-def verify(conf, data, headers, user_agent):
+def verify(conf, data, signature, user_agent):
     """
     Verify whether the request contains the characteristic features
     of an authentic Github hook and if set verifies the secret in the request
@@ -229,7 +229,6 @@ def verify(conf, data, headers, user_agent):
     try:
         if user_agent.startswith('GitHub-Hookshot/'):
             if 'secret' in conf:
-                signature = headers['X-Hub-Signature']
                 computed = hmac.new(
                     conf['secret'],
                     data,
