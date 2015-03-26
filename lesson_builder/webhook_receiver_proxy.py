@@ -161,7 +161,7 @@ def handle_ping(event):
     else:
         mode = 'w+'
     with open(file_path, mode=mode) as file:
-        json.dump(event.payload['hook'], fp=file)
+        json.dump(event.payload['hook'], fp=file, indent=4)
     yield 'Ping Received'
 
 
