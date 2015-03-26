@@ -11,6 +11,11 @@ import logging
 import os
 
 from . import github, build, config
+from .misc import Maybe
+
+
+__author__ = 'Justus Adam'
+__version__ = '0.1'
 
 
 # has to be the directory of this programs git repo root
@@ -21,9 +26,6 @@ THIS_REPO_NAME = 'fsr/lesson-builder'
 LOGGER = logging.getLogger(__name__)
 
 _default_data_directory = '.data'
-
-__author__ = 'Justus Adam'
-__version__ = '0.1'
 
 
 def relative(*args, to=APP_DIRECTORY):
@@ -37,6 +39,16 @@ def relative(*args, to=APP_DIRECTORY):
     :return:
     """
     return os.path.abspath(os.path.join(to, *args))
+
+
+def force_cache(func):
+    cached = Maybe()
+
+    def wrapper(*args, **kwargs):
+        if cached.none():
+            cached.set(func(*args, **kwargs))
+        return cached.get()
+    return wrapper
 
 
 REPOS_DIRECTORY = relative('repos')
@@ -59,19 +71,40 @@ def apply(function, iterable):
         function(i)
 
 
+@force_cache
 def get_watch_conf():
+    """
+    Open, read and parse the watch config
+
+    :return: python dict
+    """
     conf_path = relative(WATCH_CONF_NAME)
     with open(conf_path) as f:
         return json.load(f)
 
 
 def write_watch_conf(data):
+    """
+    Write python dicts/lists to the watch config file
+
+    :param data: data to write
+    :return: None
+    """
     conf_path = relative(WATCH_CONF_NAME)
     with open(conf_path, mode='w') as f:
         json.dump(data, f, indent=4)
 
 
 def is_known(name, watch_conf=None):
+    """
+    Check whether a repository name is in the watch conf.
+
+    you can provide the watch conf yourself if you have
+    read it already to avoid the IO of loading it in this function
+    :param name:
+    :param watch_conf:
+    :return:
+    """
     if watch_conf is None:
         watch_conf = get_watch_conf()
 
