@@ -323,7 +323,7 @@ body {{
 
 
 hello = """
-<div>
+<div id="box">
 <h1>I am the webhook receiver</h1>
 <p>This is a hello message for attempts at reaching me with a get request.</p>
 <p>My purpose is to be an endpoint to some github webhooks
