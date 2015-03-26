@@ -66,7 +66,7 @@ class Event:
         return cls(
             type=json['type'],
             payload=json['payload'],
-            repo=GitRepository.from_json(json['repo'])
+            repo=GitRepository.from_json(json['repository'])
         )
 
 

@@ -158,6 +158,10 @@ def do(payload):
         return handle_push(event, payload)
     elif event.type == github.PING:
         return handle_ping(event)
+    else:
+        logging.getLogger(__name__).error(
+            'Unknown event {} with payload {}'.format(event, event.payload)
+        )
 
 
 ok_headers = 'Content-Type: text/html; charset=utf-8'
