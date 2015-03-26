@@ -206,7 +206,7 @@ EVENT_TYPE = 'event'
 
 
 aliases = {
-    EVENT_TYPE: ('X-GitHub-Event', 'X_GITHUB_EVENT'),
+    EVENT_TYPE: ('X-GitHub-Event', 'X_GITHUB_EVENT', 'HTTP_X_GITHUB_EVENT'),
     CONTENT_TYPE: ('Content-Type', 'content-type', 'CONTENT_TYPE')
 }
 
@@ -217,7 +217,12 @@ def get_header(name):
         if alias in os.environ:
             return os.environ[alias]
     else:
-        raise KeyError(str(os.environ))
+        raise KeyError(
+            'For key {} with environ {}'.format(
+                name,
+                str(os.environ)
+            )
+        )
 
 
 
