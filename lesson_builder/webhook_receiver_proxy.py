@@ -220,7 +220,7 @@ def ok(head='', body=''):
     print('')
     print(ok_format_string.format(
         head=head,
-        body=html.escape(body)
+        body=body
     ))
 
 
