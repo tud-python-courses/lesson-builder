@@ -79,7 +79,7 @@ def handle_push(event, raw_data):
     payload = event.payload
 
     repo_data = payload['repository']
-    repo = github.GitRepository(repo_data['name'])
+    repo = github.GitRepository(repo_data['full_name'])
 
     known = get_watch_conf().get('watched', ())
 
