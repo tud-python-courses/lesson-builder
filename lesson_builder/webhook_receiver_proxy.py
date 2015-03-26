@@ -315,9 +315,9 @@ hello = """
 <h1>I am the webhook receiver</h1>
 <p>This is a hello message for attempts at reaching me with a get request.</p>
 <p>My purpose is to be an endpoint to some github webhooks
-for an automated LaTeX builder</p>
+for an automated LaTeX builder.</p>
 <p>If you'd like to learn more about the project visit me on
-<a href="https://github.com/{}">Github</a></p>
+<a href="https://github.com/{}">Github</a>.</p>
 """.format(THIS_REPO_NAME)
 
 
