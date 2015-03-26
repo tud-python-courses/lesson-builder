@@ -75,7 +75,7 @@ def is_known(name, watch_conf=None):
     if watch_conf is None:
         watch_conf = get_watch_conf()
 
-    known = get_watch_conf().get('watched', ())
+    known = watch_conf.get('watched', ())
 
     mapped = {
         a['name'] for a in known
@@ -128,10 +128,6 @@ def handle_push(event, raw_data):
     LOGGER.info(
         'Started build for {}'.format(repo.name)
     )
-
-    if 'id' not in mapped[repo.name]:
-        mapped[repo.name]['id'] = repo_data['id']
-        write_watch_conf(list(mapped.values()))
 
     repo_path = relative(mapped[repo.name]['directory'], to=REPOS_DIRECTORY)
 
