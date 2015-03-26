@@ -213,7 +213,7 @@ aliases = {
 
 def get_header(name):
     header_aliases = aliases[name]
-    for alias in aliases:
+    for alias in header_aliases:
         if alias in os.environ:
             return os.environ[alias]
     else:
