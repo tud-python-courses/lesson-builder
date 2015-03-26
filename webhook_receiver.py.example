@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# comment/uncomment this for debug output
+import cgitb
+cgitb.enable()
 
 APP_DIRECTORY = 'insert the location of the build script directory'
 

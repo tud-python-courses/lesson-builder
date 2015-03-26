@@ -2,16 +2,13 @@
 CGI Script handling github webhooks
 
 this script mainly takes care of in- and output
-and hands off most of the actual work to the lesson_builder package
+and hands off most of the actual work to the build module
 """
 
 import cgi
 import json
 import logging
 import os
-
-import cgitb
-cgitb.enable()
 
 from . import github, build, config
 
@@ -160,29 +157,39 @@ def do(payload):
         return handle_ping(event)
 
 
-def ok(head=None, body=None):
-    yield "Content-Type: text/html;charset=utf-8"
-    yield ""
-    yield '<html><head>'
-    if head is not None:
-        yield from head
-    yield '</head><body>'
-    if body is not None:
-        yield from body
-    yield '</body></html>'
+ok_format_string = """
+Content-Type: text/html;charset=utf-8
+
+<html>
+<head>
+{head}
+</head>
+<body>
+{body}
+</body>
+</html>
+"""
 
 
-def hello():
-    yield '<h1>This is the webhook receiver</h1>'
-    yield 'I dont think you\'ll want to reach me this way.'
+hello = """
+<h1>This is the webhook receiver</h1>
+I don't think you'll want to reach me this way.
+"""
+
+
+def ok(head='', body=''):
+    return ok_format_string.format(
+        head=head,
+        body=body
+    )
 
 
 def handle_request():
     """Main function"""
     payload = cgi.FieldStorage().read_lines_to_eof()
     if not payload:
-        gen = ok(body=hello())
+        message = ok(body=hello)
     else:
-        gen = ok(body=do(payload))
+        message = ok(body=''.join(do(payload)))
 
-    apply(print, gen)
+    print(message)
