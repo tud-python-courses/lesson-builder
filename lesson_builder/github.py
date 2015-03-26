@@ -17,17 +17,11 @@ LOGGER = logging.getLogger(__name__)
 
 
 # define the name of github events
-PUSH = 'PushEvent'
-PING = 'PingEvent'
+PUSH = 'push'
+PING = 'ping'
 
 
-SAVE_GITHUB_API_BASE_URL = 'https://api.github.com'
-
-
-_event_types = {
-    PUSH,
-    PING
-}
+SAFE_GITHUB_API_BASE_URL = 'https://api.github.com'
 
 
 DIGEST_ENCRYPTION_ALGORITHM = hashlib.sha1
@@ -42,32 +36,24 @@ Popen = functools.partial(
 
 class Event:
     """A Github event"""
+
     names = {
-        PUSH: 'push',
-        PING: 'ping'
+        PING, PUSH
     }
 
     def __init__(self, type, payload, repo):
-        if type not in _event_types:
+        if type not in self.names:
             raise ValueError('Unrecognized event type {}'.format(type))
         self.type = type
         self.payload = payload
         self.repo = repo
 
     def identifier(self):
-        return self.names[self.type]
+        return self.type
 
     @property
     def repository(self):
         return self.repo
-
-    @classmethod
-    def from_request(cls, json):
-        return cls(
-            type=json['type'],
-            payload=json['payload'],
-            repo=GitRepository.from_json(json['repository'])
-        )
 
 
 class GitRepository:
@@ -218,7 +204,7 @@ class Webhook:
 
     def activate_remote(self):
         url = '{base}/repos/{name}/hooks'.format(
-            base=SAVE_GITHUB_API_BASE_URL,
+            base=SAFE_GITHUB_API_BASE_URL,
             name=self.repo.name
         )
         data = self.to_json()

@@ -154,7 +154,12 @@ def do(payload):
     :param payload:
     :return: None
     """
-    event = github.Event.from_request(json.loads(payload))
+    payload = json.loads(payload)
+    event = github.Event(
+        type=get_header(EVENT_TYPE),
+        repo=github.GitRepository.from_json(payload['repository']),
+        payload=payload
+    )
 
     if event.type == github.PUSH:
         return handle_push(event, payload)
@@ -196,8 +201,18 @@ def ok(head='', body=''):
     ))
 
 
-def get_content_type():
-    aliases = ('Content-Type', 'content-type', 'CONTENT_TYPE')
+CONTENT_TYPE = 'ct'
+EVENT_TYPE = 'event'
+
+
+aliases = {
+    EVENT_TYPE: (),
+    CONTENT_TYPE: ('Content-Type', 'content-type', 'CONTENT_TYPE')
+}
+
+
+def get_header(name):
+    header_aliases = aliases[name]
     for alias in aliases:
         if alias in os.environ:
             return os.environ[alias]
@@ -205,10 +220,11 @@ def get_content_type():
         raise KeyError(str(os.environ))
 
 
+
 def handle_request():
     """Main function"""
 
-    _, ce = cgi.parse_header(get_content_type())
+    _, ce = cgi.parse_header(get_header(CONTENT_TYPE))
     payload = sys.stdin.read()
     if not payload:
         ok(body=hello)
