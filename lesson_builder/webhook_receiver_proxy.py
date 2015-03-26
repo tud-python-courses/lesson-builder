@@ -157,7 +157,7 @@ def update(r):
     if code != 0:
         LOGGER.critical(
             'Update failed with code {} and message:\n{}'.format(
-                code, p.stdout.read().decode()
+                code, p.stderr.read().decode()
             )
         )
         return 'Update failed'
