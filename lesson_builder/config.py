@@ -14,7 +14,8 @@ BASE_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 logging.basicConfig(
     format='[%(levelname)10s]:%(message)s',
-    filename=os.path.join(BASE_DIRECTORY, 'builder.log')
+    filename=os.path.join(BASE_DIRECTORY, 'builder.log'),
+    level=logging.DEBUG if DEBUG else logging.ERROR
 )
 
 ERROR_LOG_FILE = 'builder-error.log'
