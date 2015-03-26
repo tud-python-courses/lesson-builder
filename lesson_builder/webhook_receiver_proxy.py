@@ -102,7 +102,7 @@ def handle_push(event, raw_data):
     if not github.verify(
             mapped[repo.name],
             raw_data,
-            get_header(SIGNATURE),
+            get_header_soft(SIGNATURE),
             os.environ['HTTP_USER_AGENT']
     ):
         return "Unknown requester"
@@ -262,6 +262,15 @@ def get_header(name):
                 str(os.environ)
             )
         )
+
+
+def get_header_soft(name, default=None):
+    header_aliases = aliases[name]
+    for alias in header_aliases:
+        if alias in os.environ:
+            return os.environ[alias]
+    else:
+        return default
 
 
 def handle_request():
