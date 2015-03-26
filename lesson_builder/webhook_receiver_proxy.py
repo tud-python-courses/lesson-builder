@@ -298,9 +298,9 @@ ok_format_string = """
 <html>
 <head>
 <style type="text/css">
-body {
+body {{
     font-family: monaco, monospace;
-}
+}}
 </style>
 {head}
 </head>
@@ -317,8 +317,8 @@ hello = """
 <p>My purpose is to be an endpoint to some github webhooks
 for an automated LaTeX builder</p>
 <p>If you'd like to learn more about the project visit me on
-<a href="https://github.com/%s">Github</a></p>
-""" % THIS_REPO_NAME
+<a href="https://github.com/{}">Github</a></p>
+""".format(THIS_REPO_NAME)
 
 
 def ok(head='', body=''):
