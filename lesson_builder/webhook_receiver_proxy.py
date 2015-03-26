@@ -312,14 +312,20 @@ body {{
 
 
 hello = """
-<div style="margin:20 auto; background-color: rgb(55, 70, 228); color: white;
-width: 400px; height: auto;">
+<div style="
+  margin: 20px auto;
+  background-color: rgb(0, 15, 169);
+  color: white;
+  width: 600px;
+  height: auto;
+  padding: 20px 40px;
+">
 <h1>I am the webhook receiver</h1>
 <p>This is a hello message for attempts at reaching me with a get request.</p>
 <p>My purpose is to be an endpoint to some github webhooks
 for an automated LaTeX builder.</p>
 <p>If you'd like to learn more about the project visit me on
-<a href="https://github.com/{}">Github</a>.</p>
+<a href="https://github.com/{}" style="color:orange;">Github</a>.</p>
 </div>
 """.format(THIS_REPO_NAME)
 
