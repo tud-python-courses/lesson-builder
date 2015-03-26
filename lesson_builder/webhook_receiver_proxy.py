@@ -171,7 +171,10 @@ def do(payload):
         )
 
 
-ok_headers = 'Content-Type: text/html; charset=utf-8'
+ok_html_headers = 'Content-Type: text/html; charset=utf-8'
+
+
+ok_handled_header = 'Content-Type: text/plain; charset=utf-8'
 
 
 ok_format_string = """
@@ -193,7 +196,7 @@ I don't think you'll want to reach me this way.
 
 
 def ok(head='', body=''):
-    print(ok_headers)
+    print(ok_html_headers)
     print('')
     print(ok_format_string.format(
         head=head,
@@ -235,4 +238,6 @@ def handle_request():
     if not payload:
         ok(body=hello)
     else:
-        '\n'.join(do(payload))
+        print(ok_handled_header)
+        print()
+        print('\n'.join(do(payload)))
