@@ -9,13 +9,13 @@ import sys
 import json
 import logging
 import os
-import cgi
-import html
 
 from . import github, build, config
 
 
 APP_DIRECTORY = config.BASE_DIRECTORY
+
+LOGGER = logging.getLogger(__name__)
 
 _default_data_directory = '.data'
 
@@ -70,7 +70,7 @@ def write_watch_conf(data):
 
 def handle_push(event, raw_data):
     """
-    Handle the payload received and yield a somewhat useful response
+    Handle the payload received and return a somewhat useful response
 
     :param event: github.Event instace
     :param raw_data: raw bytes of the message
@@ -78,49 +78,62 @@ def handle_push(event, raw_data):
     """
     payload = event.payload
 
-    for skip_string in SKIP_STRINGS:
-        if skip_string in payload['head_commit']['message']:
-            yield "Commit message demands skip"
-            raise StopIteration
+    repo_data = payload['repository']
+    repo = github.GitRepository(repo_data['name'])
 
     known = get_watch_conf().get('watched', ())
-
-    repo = payload['repository']
-    repo_name = repo['name']
 
     mapped = {
         a['name']: a for a in known
     }
 
-    if repo_name not in mapped:
-        yield "Repository not on watchlist"
+    if repo.name not in mapped:
+        return "Repository not on watchlist"
+
+    for skip_string in SKIP_STRINGS:
+        if skip_string in payload['head_commit']['message']:
+            LOGGER.info(
+                'Skipping build {} [commit_message]'.format(
+                    repo.name
+                )
+            )
+            return "Commit message demands skip"
+
+    if not github.verify(
+            mapped[repo.name],
+            raw_data,
+            get_header(SIGNATURE),
+            os.environ['HTTP_USER_AGENT']
+    ):
+        return "Unknown requester"
+
+    LOGGER.info(
+        'Started build for {}'.format(repo.name)
+    )
+
+    if 'id' not in mapped[repo.name]:
+        mapped[repo.name]['id'] = repo_data['id']
+        write_watch_conf(list(mapped.values()))
+
+    repo_path = relative(mapped[repo.name]['directory'], to=REPOS_DIRECTORY)
+    repo_obj = github.GitRepository(repo.name)
+
+    if not os.path.exists(repo_path):
+        os.makedirs(repo_path)
+        code = try_clone(repo_obj, repo_path)
     else:
-        if not github.verify(
-                mapped[repo_name],
-                raw_data,
-                get_header(SIGNATURE),
-                os.environ['HTTP_USER_AGENT']
-        ):
-            yield "Unknown requester"
-            raise StopIteration
-        if 'id' not in mapped[repo_name]:
-            mapped[repo_name]['id'] = repo['id']
-            write_watch_conf(list(mapped.values()))
+        code = try_pull(repo_obj, repo_path)
 
-        repo_path = relative(mapped[repo_name]['directory'], to=REPOS_DIRECTORY)
-        repo_obj = github.GitRepository(repo_name)
-
-        if not os.path.exists(repo_path):
-            os.makedirs(repo_path)
-            code = try_clone(repo_obj, repo_path)
-        else:
-            code = try_pull(repo_obj, repo_path)
-
-        if code != 0:
-            yield "Clone failed with code {}".format(code)
-        else:
-            logging.getLogger(__name__).debug(build.build_and_report(repo_path))
-            yield "Build finished"
+    if code != 0:
+        LOGGER.error(
+            'Clone for repository {} in directory {} failed with {}'.format(
+                repo_obj.name, repo_path, code
+            )
+        )
+        return "Git operations failed"
+    else:
+        LOGGER.info(build.build_and_report(repo_path))
+        return "Build finished"
 
 
 def try_clone(repo, path):
@@ -149,12 +162,13 @@ def try_pull(repo, path):
 
 
 def handle_ping(event):
-    logging.getLogger(__name__).info(
-        'Received ping event with payload\n{}'.format(event.payload)
+    hook_id = event.payload['hook_id']
+
+    LOGGER.info(
+        'Received ping event for hook {}'.format(hook_id)
     )
 
     directory = get_watch_conf().get('data_directory', _default_data_directory)
-    hook_id = event.payload['hook_id']
     file_path = relative(directory, 'hook_{}.conf.json'.format(hook_id))
     if os.path.exists(file_path):
         mode = 'w'
@@ -162,7 +176,7 @@ def handle_ping(event):
         mode = 'w+'
     with open(file_path, mode=mode) as file:
         json.dump(event.payload['hook'], fp=file, indent=4)
-    yield 'Ping Received'
+    return 'Ping Received'
 
 
 def do(payload):
@@ -186,8 +200,8 @@ def do(payload):
     elif event.type == github.PING:
         return handle_ping(event)
     else:
-        logging.getLogger(__name__).error(
-            'Unknown event {} with payload {}'.format(event, event.payload)
+        LOGGER.error(
+            'Unknown event {} with payload {}'.format(event.type, event.payload)
         )
 
 
@@ -260,4 +274,4 @@ def handle_request():
     else:
         print(ok_handled_header)
         print()
-        print('\n'.join(do(payload)))
+        print(do(payload))

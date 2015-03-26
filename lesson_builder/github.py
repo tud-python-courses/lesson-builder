@@ -229,20 +229,36 @@ def verify(conf, data, signature, user_agent):
     try:
         if user_agent.startswith('GitHub-Hookshot/'):
             if 'secret' in conf:
+                secret = conf['secret']
                 computed = hmac.new(
-                    conf['secret'],
+                    secret,
                     data,
                     DIGEST_ENCRYPTION_ALGORITHM
                 ).hexdigest()
-                return computed == signature
+                if not computed == signature:
+                    LOGGER.error(
+                        'Signature {} did not match computed hash '
+                        '{} with secret {}'.format(
+                            signature, computed, secret
+                        )
+                    )
+                    return False
+                else:
+                    return True
             else:
                 return True
-        return False
+        else:
+            LOGGER.error(
+                'User agent {} is not allowed'.format(
+                    user_agent
+                )
+            )
+            return False
     except KeyError as e:
-        logging.getLogger(__name__).error(
+        LOGGER.error(
             'Missing key {} in environ'.format(e)
         )
-        logging.getLogger(__name__).debug(
+        LOGGER.debug(
             'Headers: {}\nUserAgent: {}'.format(signature, user_agent)
         )
         return False
