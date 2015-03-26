@@ -87,13 +87,12 @@ def handle_push(event, raw_data):
     """
     Handle the payload received and return a somewhat useful response
 
-    :param event: github.Event instace
+    :param event: github.Event instance
     :param raw_data: raw bytes of the message
     :return:
     """
     payload = event.payload
 
-    repo_data = payload['repository']
     repo = event.repo
 
     if repo.name in special_actions:
