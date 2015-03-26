@@ -1,10 +1,13 @@
-[
-    {
-        "name": "fsr/python-lessons",
-        "directory": "python_lessons"
-    },
-    {
-        "name": "fsr/ruby-lessons",
-        "directory": "ruby_lessons"
-    }
-]
+{
+    "data_directory": ".data",
+    "watched": [
+        {
+            "name": "fsr/python-lessons",
+            "directory": "python_lessons"
+        },
+        {
+            "name": "fsr/ruby-lessons",
+            "directory": "ruby_lessons"
+        }
+    ]
+}

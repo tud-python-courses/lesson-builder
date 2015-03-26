@@ -17,6 +17,8 @@ from . import github, build, config
 
 APP_DIRECTORY = config.BASE_DIRECTORY
 
+_default_data_directory = '.data'
+
 __author__ = 'Justus Adam'
 __version__ = '0.1'
 
@@ -54,6 +56,18 @@ def apply(function, iterable):
         function(i)
 
 
+def get_watch_conf():
+    conf_path = relative(WATCH_CONF_NAME)
+    with open(conf_path) as f:
+        return json.load(f)
+
+
+def write_watch_conf(data):
+    conf_path = relative(WATCH_CONF_NAME)
+    with open(conf_path, mode='w') as f:
+        json.dump(data, f, indent=4)
+
+
 def handle_push(event, raw_data):
     """
     Handle the payload received and yield a somewhat useful response
@@ -69,10 +83,7 @@ def handle_push(event, raw_data):
             yield "Commit message demands skip"
             raise StopIteration
 
-    conf_path = relative(WATCH_CONF_NAME)
-
-    with open(conf_path) as f:
-        known = json.load(f)
+    known = get_watch_conf().get('watched', ())
 
     repo = payload['repository']
     repo_name = repo['name']
@@ -94,8 +105,7 @@ def handle_push(event, raw_data):
             raise StopIteration
         if 'id' not in mapped[repo_name]:
             mapped[repo_name]['id'] = repo['id']
-            with open(conf_path, mode='w') as f:
-                json.dump(list(mapped.values()), f, indent=4)
+            write_watch_conf(list(mapped.values()))
 
         repo_path = relative(mapped[repo_name]['directory'], to=REPOS_DIRECTORY)
         repo_obj = github.GitRepository(repo_name)
@@ -142,6 +152,16 @@ def handle_ping(event):
     logging.getLogger(__name__).info(
         'Received ping event with payload\n{}'.format(event.payload)
     )
+
+    directory = get_watch_conf().get('data_directory', _default_data_directory)
+    hook_id = event.payload['hook_id']
+    file_path = relative(directory, 'hook_{}.conf.json'.format(hook_id))
+    if os.path.exists(file_path):
+        mode = 'w'
+    else:
+        mode = 'w+'
+    with open(file_path, mode=mode) as file:
+        json.dump(event.payload['hook'], fp=file)
     yield 'Ping Received'
 
 

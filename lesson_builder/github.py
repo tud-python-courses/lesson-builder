@@ -243,6 +243,6 @@ def verify(conf, data, signature, user_agent):
             'Missing key {} in environ'.format(e)
         )
         logging.getLogger(__name__).debug(
-            'Headers: {}\nUserAgent: {}'.format(headers, user_agent)
+            'Headers: {}\nUserAgent: {}'.format(signature, user_agent)
         )
         return False
