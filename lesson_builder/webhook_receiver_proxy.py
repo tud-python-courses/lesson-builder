@@ -297,6 +297,11 @@ ok_handled_header = 'Content-Type: text/plain; charset=utf-8'
 ok_format_string = """
 <html>
 <head>
+<style type="text/css">
+body {
+    font-family: monaco, monospace;
+}
+</style>
 {head}
 </head>
 <body>
@@ -307,9 +312,13 @@ ok_format_string = """
 
 
 hello = """
-<h1>This is the webhook receiver</h1>
-I don't think you'll want to reach me this way.
-"""
+<h1>I am the webhook receiver</h1>
+<p>This is a hello message for attempts at reaching me with a get request.</p>
+<p>My purpose is to be an endpoint to some github webhooks
+for an automated LaTeX builder</p>
+<p>If you'd like to learn more about the project visit me on
+<a href="https://github.com/{}">Github</a></p>
+""".format(THIS_REPO_NAME)
 
 
 def ok(head='', body=''):
