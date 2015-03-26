@@ -295,7 +295,7 @@ aliases = {
 
 
 special_actions = {
-    _app_repo_root: update
+    THIS_REPO_NAME: update
 }
 
 
