@@ -152,6 +152,12 @@ def handle_push(event, raw_data):
 
 
 def update(r):
+    """
+    Update this software using git
+
+    :param r:
+    :return:
+    """
     p = r.apull(_app_repo_root)
     code = p.wait()
     if code != 0:
