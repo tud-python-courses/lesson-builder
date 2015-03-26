@@ -206,7 +206,7 @@ EVENT_TYPE = 'event'
 
 
 aliases = {
-    EVENT_TYPE: (),
+    EVENT_TYPE: ('X-GitHub-Event', 'X_GITHUB_EVENT'),
     CONTENT_TYPE: ('Content-Type', 'content-type', 'CONTENT_TYPE')
 }
 
