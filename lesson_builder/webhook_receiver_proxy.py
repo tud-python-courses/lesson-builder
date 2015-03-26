@@ -209,7 +209,7 @@ def handle_request():
     """Main function"""
 
     _, ce = cgi.parse_header(get_content_type())
-    payload = sys.stdin.read().decode(ce.get('charset', 'utf-8'))
+    payload = sys.stdin.read()
     if not payload:
         ok(body=hello)
     else:
