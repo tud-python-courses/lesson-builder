@@ -13,7 +13,7 @@ BUILD_TIMEOUT = 2 * 60  # seconds
 BASE_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 logging.basicConfig(
-    format='%(levelname)-10s %(asctime)-15s [%(name)s]:%(message)s',
+    format='%(levelname)-10s %(asctime)-15s [%(name)s] :: %(message)s',
     filename=os.path.join(BASE_DIRECTORY, 'builder.log'),
     level=logging.DEBUG if DEBUG else logging.ERROR
 )
