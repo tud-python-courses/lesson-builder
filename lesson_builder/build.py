@@ -277,9 +277,9 @@ def build_and_report(wd):
                 code = process.kill()
 
             if code == 0:
-                yield process, code
+                yield file, code
             else:
-                yield process, '{} and \nstdout: {}\n stderr: {}'.format(
+                yield file, '{} and \nstdout: {}\n stderr: {}'.format(
                     code,
                     process.stdout.read() if process.stdout else '',
                     process.stderr.read() if process.stderr else ''
