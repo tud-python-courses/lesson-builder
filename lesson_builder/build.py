@@ -269,12 +269,22 @@ def build_and_report(wd):
         for file, process in builds:
             try:
                 if waited:
-                    yield file, process.wait(0)
+                    code = process.wait(0)
                 else:
-                    yield file, process.wait(config.BUILD_TIMEOUT)
+                    code = process.wait(config.BUILD_TIMEOUT)
             except subprocess.TimeoutExpired:
                 waited = True
-                yield file, process.kill()
+                code = process.kill()
+
+            if code == 0:
+                yield process, code
+            else:
+                yield process, '{} and \nstdout: {}\n stderr: {}'.format(
+                    code,
+                    process.stdout.read(),
+                    process.stderr.read()
+                )
+
 
     def print_finished(builds):
         """
