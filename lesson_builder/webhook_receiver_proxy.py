@@ -336,12 +336,10 @@ for an automated TeX builder.</p>
 
 
 def ok(head='', body=''):
-    print(ok_html_headers)
-    print('')
-    print(ok_format_string.format(
+    return ok_format_string.format(
         head=head,
         body=body
-    ))
+    )
 
 
 CONTENT_TYPE = 'ct'
@@ -389,20 +387,22 @@ def handle_request():
 
     # we return ok in any case
     # we don't necessarily want github to know of our problems
-    print(ok_handled_header)
-    print()
 
     try:
 
         # _, ce = cgi.parse_header(get_header(CONTENT_TYPE))
         payload = sys.stdin.read()
         if not payload:
-            ok(body=hello)
+            message = ok(body=hello)
         else:
-            print(do(payload))
+            message = do(payload)
     except Exception as e:
         # we catch any exception and log them before it might accidentally get reported
         LOGGER.critical(
-            'Build exception caught {} with traceback\n{}'.format(e, '\n'.join(traceback.format_tb(sys.exc_info()[2])))
+            'Build exception caught {} with traceback\n{}'.format(e, ''.join(traceback.format_tb(sys.exc_info()[2])))
         )
-        print('Exception occurred, build failed')
+        message = 'Exception occurred, build failed'
+
+    print(ok_handled_header)
+    print()
+    print(message)
