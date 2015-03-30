@@ -281,10 +281,9 @@ def build_and_report(wd):
             else:
                 yield process, '{} and \nstdout: {}\n stderr: {}'.format(
                     code,
-                    process.stdout.read(),
-                    process.stderr.read()
+                    process.stdout.read() if process.stdout else '',
+                    process.stderr.read() if process.stderr else ''
                 )
-
 
     def print_finished(builds):
         """
