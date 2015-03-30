@@ -403,6 +403,6 @@ def handle_request():
     except Exception as e:
         # we catch any exception and log them before it might accidentally get reported
         LOGGER.critical(
-            'Build exception caught {} with traceback\n{}'.format(e, sys.exc_info()[2])
+            'Build exception caught {} with traceback\n{}'.format(e, traceback.format_tb(sys.exc_info()[2]))
         )
         print('Exception occurred, build failed')
