@@ -404,4 +404,4 @@ def handle_request():
         LOGGER.critical(
             'Build exception caught {}'.format(e)
         )
-        print('Exception occurred, build Failed')
+        print('Exception occurred, build failed')

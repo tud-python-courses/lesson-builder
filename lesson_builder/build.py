@@ -222,9 +222,20 @@ def abuild_directory(wd):
         for name, b_conf in conf.get('builds', {}).items()
     )
 
-    building_own = tuple((b, b.abuild()) for b in builds)
+    # this catches any FileNotFoundError's and logs them so we still build the good configs
+    building_own = tuple(catch_abuilds(builds))
 
     return building_includes + building_own
+
+
+def catch_abuilds(builds):
+    for build in builds:
+        try:
+            yield build, build.abuild()
+        except FileNotFoundError as e:
+            LOGGER.critical(
+                'Build {} could not execute due to {}'.format(build.name, e)
+            )
 
 
 def output_from_command(file, command):
