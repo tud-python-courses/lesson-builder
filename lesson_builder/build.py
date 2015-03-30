@@ -6,8 +6,8 @@ import itertools
 import logging
 from . import github, config
 
-LOGGER = logging.getLogger(__name__)
 
+LOGGER = logging.getLogger(__name__)
 TEX_OUTPUT = {
     'htlatex': 'html',
     'pdflatex': 'pdf',
@@ -109,7 +109,7 @@ class Include:
         )
 
     @classmethod
-    def realtive_to(
+    def relative_to(
             cls,
             base_dir,
             git_url=None,
@@ -189,6 +189,7 @@ def read_conf(wd):
 def abuild_directory(wd):
     """
     Asynchronously build whats defined in the build_conf in that directory
+    returns an empty tuple if something fails
 
     :param wd: working directory
     :return: executing builds
@@ -208,7 +209,7 @@ def abuild_directory(wd):
     includes_folder = os.path.join(wd, conf.get('includes_directory', ''))
 
     includes = tuple(
-        Include.realtive_to(includes_folder, **i) for i in conf.get('include', ())
+        Include.relative_to(includes_folder, **i) for i in conf.get('include', ())
     )
 
     building_includes = tuple(itertools.chain.from_iterable(

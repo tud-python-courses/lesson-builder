@@ -386,11 +386,22 @@ def get_header_soft(name, default=None):
 def handle_request():
     """Main function"""
 
-    # _, ce = cgi.parse_header(get_header(CONTENT_TYPE))
-    payload = sys.stdin.read()
-    if not payload:
-        ok(body=hello)
-    else:
-        print(ok_handled_header)
-        print()
-        print(do(payload))
+    # we return ok in any case
+    # we don't necessarily want github to know of our problems
+    print(ok_handled_header)
+    print()
+
+    try:
+
+        # _, ce = cgi.parse_header(get_header(CONTENT_TYPE))
+        payload = sys.stdin.read()
+        if not payload:
+            ok(body=hello)
+        else:
+            print(do(payload))
+    except Exception as e:
+        # we catch any exception and log them before it might accidentally get reported
+        LOGGER.critical(
+            'Build exception caught {}'.format(e)
+        )
+        print('Exception occurred, build Failed')
