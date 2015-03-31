@@ -11,7 +11,8 @@ LOGGER = logging.getLogger(__name__)
 TEX_OUTPUT = {
     'htlatex': 'html',
     'pdflatex': 'pdf',
-    'xelatex': 'pdf'
+    'xelatex': 'pdf',
+    'hevea': 'html'
 }
 
 
