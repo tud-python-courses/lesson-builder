@@ -1,12 +1,12 @@
-import functools
 import hmac
 import json
 import logging
 
 import re
-import subprocess
 import urllib.request
 import hashlib
+
+from . import misc
 
 __author__ = 'Justus Adam'
 __version__ = '0.1'
@@ -25,13 +25,6 @@ SAFE_GITHUB_API_BASE_URL = 'https://api.github.com'
 
 
 DIGEST_ENCRYPTION_ALGORITHM = hashlib.sha1
-
-
-Popen = functools.partial(
-    subprocess.Popen,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE
-)
 
 
 class Event:
@@ -121,7 +114,7 @@ class GitRepository:
         :param directory: directory to pull into
         :return: Executing process
         """
-        return Popen(('git', '-C', directory, 'pull'))
+        return misc.Popen(('git', '-C', directory, 'pull'))
 
     def aclone(self, into_dir=None):
         """
@@ -137,7 +130,7 @@ class GitRepository:
         action = ['git', 'clone', url]
         if into_dir:
             action.append(into_dir)
-        return Popen(action)
+        return misc.Popen(action)
 
     def refresh(self):
         """

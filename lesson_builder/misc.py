@@ -1,5 +1,15 @@
+import functools
+import subprocess
+
 __author__ = 'Justus Adam'
 __version__ = '0.1'
+
+
+Popen = functools.partial(
+    subprocess.Popen,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE
+)
 
 
 class Monad:

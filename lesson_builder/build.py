@@ -1,10 +1,10 @@
 """build script for our lesson repositories"""
 import json
 import os
-import subprocess
 import itertools
 import logging
-from . import github, config
+import subprocess
+from . import github, config, misc
 
 
 LOGGER = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class Build:
         if not os.path.exists(self.target_dir):
             os.makedirs(self.target_dir)
 
-        return file, subprocess.Popen(
+        return file, misc.Popen(
             (
                 self.command,
                 '-halt-on-error',
@@ -280,7 +280,7 @@ def build_and_report(wd):
             if code == 0:
                 yield file, code
             else:
-                yield file, '{} and \nstdout: {}\n stderr: {}'.format(
+                yield file, '{} and \n     stdout: {}\n     stderr: {}'.format(
                     code,
                     process.stdout.read() if process.stdout else '',
                     process.stderr.read() if process.stderr else ''
