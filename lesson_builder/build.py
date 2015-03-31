@@ -51,7 +51,7 @@ class Build:
         self.source_dir = os.path.join(base_dir, source_dir)
         self.files = files
 
-    def abuild_file(self, file):
+    def abuild_file(self, file, cwd='.'):
         """
         Start a build of a single file and return the running process wrapper
 
@@ -70,10 +70,11 @@ class Build:
                 '-interaction=nonstopmode',
                 '-output-directory', self.target_dir,
                 source
-            )
+            ),
+            cwd=cwd
         )
 
-    def abuild(self):
+    def abuild(self, cwd='.'):
         """
         Start this build and return a tuple of the running processes
 
@@ -81,7 +82,7 @@ class Build:
         """
         if not os.path.exists(self.target_dir):
             os.makedirs(self.target_dir)
-        return tuple(self.abuild_file(file) for file in self.files)
+        return tuple(self.abuild_file(file, cwd=cwd) for file in self.files)
 
 
 class Include:
@@ -232,7 +233,7 @@ def abuild_directory(wd):
 def catch_abuilds(builds):
     for build in builds:
         try:
-            yield build, build.abuild()
+            yield build, build.abuild(cwd=build.source_dir)
         except FileNotFoundError as e:
             LOGGER.critical(
                 'Build {} could not execute due to {}'.format(build.name, e)
@@ -282,8 +283,8 @@ def build_and_report(wd):
             else:
                 yield file, '{} and \n     stdout: {}\n     stderr: {}'.format(
                     code,
-                    process.stdout.read() if process.stdout else '',
-                    process.stderr.read() if process.stderr else ''
+                    process.stdout.read().decode() if process.stdout else '',
+                    process.stderr.read().decode() if process.stderr else ''
                 )
 
     def print_finished(builds):
