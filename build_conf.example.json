@@ -1,26 +1,15 @@
 {
-    "builds": {
-        "html": {
-            "command": "htlatex",
-            "target_dir": "build/html",
-            "source_dir": "src"
-        },
-        "pdf": {
-            "command": "pdflatex",
-            "target_dir": "build/pdf",
-            "skip": ["file_12.tex"]
-        }
+  "builds": {
+    "html": {
+      "command": "htlatex",
+      "target_dir": "build/html",
+      "source_dir": "src",
+      "files": []
     },
-    "targets": {
-        "one": {
-            "builds": ["html", "pdf"]
-        }
-    },
-    "default": {
-        "files": ["file_1.tex", "file_2.tex"],
-        "source_dir": "src"
-    },
-    "enforce": {
-
+    "pdf": {
+      "command": "pdflatex",
+      "target_dir": "build/pdf",
+      "files": []
     }
+  }
 }

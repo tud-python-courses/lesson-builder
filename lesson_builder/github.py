@@ -132,16 +132,16 @@ class GitRepository:
             action.append(into_dir)
         return misc.Popen(action)
 
-    def refresh(self):
+    def refresh(self, into_dir=None):
         """
         Pull or clone as appropriate (not async)
 
         :return: None
         """
-        proc = self.apull()
+        proc = self.apull() if into_dir is None else self.apull(into_dir)
         code = proc.wait()
         if not code == 0:
-            proc2 = self.aclone()
+            proc2 = self.aclone() if into_dir is None else self.aclone(into_dir)
             code2 = proc2.wait()
 
             if not code2 == 0:

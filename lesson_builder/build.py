@@ -4,6 +4,7 @@ import os
 import itertools
 import logging
 import subprocess
+import collections
 from . import github, config, misc
 
 
@@ -13,6 +14,9 @@ TEX_OUTPUT = {
     'pdflatex': 'pdf',
     'xelatex': 'pdf',
     'hevea': 'html'
+}
+PATHS = {
+    'app': config.BASE_DIRECTORY
 }
 
 
@@ -51,7 +55,7 @@ class Build:
         self.source_dir = os.path.join(base_dir, source_dir)
         self.files = files
 
-    def abuild_file(self, file, cwd='.'):
+    def abuild_file(self, file, cwd='.', env=os.environ):
         """
         Start a build of a single file and return the running process wrapper
 
@@ -71,10 +75,11 @@ class Build:
                 '-output-directory', self.target_dir,
                 source
             ),
+            env=env,
             cwd=cwd
         )
 
-    def abuild(self, cwd='.'):
+    def abuild(self, cwd='.', env=os.environ):
         """
         Start this build and return a tuple of the running processes
 
@@ -188,7 +193,42 @@ def read_conf(wd):
         return json.load(file)
 
 
-def abuild_directory(wd):
+def refresh_tex_includes(repo: github.GitRepository, directory):
+    repo.refresh(directory)
+
+
+def build_includes(conf: dict, wd: str, env: dict) -> ((Build, subprocess.Popen), ...):
+    includes_folder = os.path.join(wd, conf.get('includes_directory', ''))
+
+    includes = tuple(
+        Include.relative_to(includes_folder, **i) for i in conf.get('include', ())
+    )
+
+    building = tuple(itertools.chain.from_iterable(
+        abuild_directory(include.directory, env=env)
+        for include in refresh_includes(includes)
+    ))
+
+    finished = finish_builds(building)
+    return finished
+
+
+def handle_env_conf(conf: dict, env: dict) -> dict:
+    if 'tex_include' in conf:
+        template_dir = conf['tex_include']['directory'].format(**PATHS)
+        repo = github.GitRepository.from_url(conf['tex_includes']['clone_url'])
+        refresh_tex_includes(repo, template_dir)
+        return collections.ChainMap(
+            {
+                'TEXINPUTS': '.:{}//:'.format(template_dir)
+            },
+            env
+        )
+    else:
+        return env
+
+
+def abuild_directory(wd: str, env: dict=os.environ) -> ((Build, subprocess.Popen), ...):
     """
     Asynchronously build whats defined in the build_conf in that directory
     returns an empty tuple if something fails
@@ -208,32 +248,25 @@ def abuild_directory(wd):
         LOGGER.error(e)
         return ()
 
-    includes_folder = os.path.join(wd, conf.get('includes_directory', ''))
+    env = handle_env_conf(conf, env)
 
-    includes = tuple(
-        Include.relative_to(includes_folder, **i) for i in conf.get('include', ())
-    )
+    finished_includes = build_includes(conf, wd, env)
 
-    building_includes = tuple(itertools.chain.from_iterable(
-        abuild_directory(include.directory)
-        for include in refresh_includes(includes)
-    ))
-
-    builds = tuple(
+    builds = (
         Build(name, base_dir=wd, **b_conf)
         for name, b_conf in conf.get('builds', {}).items()
     )
 
     # this catches any FileNotFoundError's and logs them so we still build the good configs
-    building_own = tuple(catch_abuilds(builds))
+    building_own = tuple(catch_abuilds(builds, env=env))
 
-    return building_includes + building_own
+    return finished_includes + building_own
 
 
-def catch_abuilds(builds):
+def catch_abuilds(builds, env=os.environ):
     for build in builds:
         try:
-            yield build, build.abuild(cwd=build.source_dir)
+            yield build, build.abuild(cwd=build.source_dir, env=env)
         except FileNotFoundError as e:
             LOGGER.critical(
                 'Build {} could not execute due to {}'.format(build.name, e)
@@ -251,6 +284,23 @@ def output_from_command(file, command):
     return file.rsplit('.', 1)[0] + '.' + TEX_OUTPUT[command]
 
 
+def finish_builds(builds):
+    """
+    Wait for the executing builds or kill them
+
+    :param builds:
+    :return:
+    """
+
+    for file, process in builds:
+        if process.poll() is None:
+            try:
+                process.wait(config.BUILD_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                process.kill()
+    return builds
+
+
 def build_and_report(wd):
     """
     Build a directory and return some printable information on how it went
@@ -260,32 +310,16 @@ def build_and_report(wd):
     """
     building = abuild_directory(wd)
 
-    def finish_builds(builds):
-        """
-        Wait for the executing builds and collect the return codes
-
-        :param builds:
-        :return:
-        """
-        waited = False
-        for file, process in builds:
-            try:
-                if waited:
-                    code = process.wait(0)
-                else:
-                    code = process.wait(config.BUILD_TIMEOUT)
-            except subprocess.TimeoutExpired:
-                waited = True
-                code = process.kill()
-
-            if code == 0:
-                yield file, code
-            else:
-                yield file, '{} and \n     stdout: {}\n     stderr: {}'.format(
-                    code,
-                    process.stdout.read().decode() if process.stdout else '',
-                    process.stderr.read().decode() if process.stderr else ''
-                )
+    def format_status(process):
+        code = process.returncode
+        if code == 0:
+            return code
+        else:
+            return '{} and \n     stdout: {}\n     stderr: {}'.format(
+                code,
+                process.stdout.read().decode() if process.stdout else '',
+                process.stderr.read().decode() if process.stderr else ''
+            )
 
     def print_finished(builds):
         """
@@ -299,9 +333,11 @@ def build_and_report(wd):
             'Build {} with {} files:\n      {}'.format(
                 build.name, len(building_files), '\n      '.join(
                     '{}   ->   {}    with code {}'.format(
-                        file, output_from_command(file, build.command), status
+                        file,
+                        output_from_command(file, build.command),
+                        format_status(process)
                     )
-                    for file, status in (
+                    for file, process in (
                         finish_builds(building_files)
                     )
                 )
