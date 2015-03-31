@@ -12,6 +12,7 @@ import os
 
 from . import github, build, config
 import traceback
+from lesson_builder import misc
 from .misc import Maybe
 
 
@@ -196,8 +197,11 @@ def update(r):
     code = p.wait()
     if code != 0:
         LOGGER.critical(
-            'Update failed with code {} and message:\n{}'.format(
-                code, p.stderr.read().decode()
+            'Update failed with code {}'.format(code)
+        )
+        LOGGER.debug(
+            misc.error_capture_format(
+                ('stderr', p.stderr.read().decode())
             )
         )
         return 'Update failed'
@@ -250,7 +254,9 @@ def handle_ping(event):
         json.dump(event.payload['hook'], fp=file, indent=4)
 
     LOGGER.info(
-        'Received ping event:\n'
+        'Received ping event:'
+    )
+    LOGGER.debug(
         'repository: {}\n'
         'hook_id: {}\n'
         'data saved in {}\n'
@@ -285,7 +291,12 @@ def do(payload):
         return handle_ping(event)
     else:
         LOGGER.error(
-            'Unknown event {} with payload {}'.format(event.type, event.payload)
+            'Unknown event {}\n'.format(event.type)
+        )
+        LOGGER.debug(
+            misc.error_capture_format(
+                ('payload', event.payload)
+            )
         )
 
 
@@ -366,9 +377,11 @@ def get_header(name):
             return os.environ[alias]
     else:
         raise KeyError(
-            'For key {} with environ {}'.format(
+            'For key {}\n{}'.format(
                 name,
-                str(os.environ)
+                misc.error_capture_format(
+                    ('environ', os.environ)
+                )
             )
         )
 
@@ -399,10 +412,15 @@ def handle_request():
     except Exception as e:
         # we catch any exception and log them before it might accidentally get reported
         LOGGER.critical(
-            'Caught build exception {} with message: {} and traceback\n{}'.format(
+            'Caught build exception {} with message: {}\n'.format(
                 e.__class__.__name__,
-                e.__cause__,
-                ''.join(traceback.format_tb(sys.exc_info()[2])))
+                e.__cause__
+            )
+        )
+        LOGGER.debug(
+            misc.error_capture_format(
+                ('traceback', traceback.format_tb(sys.exc_info()[2]))
+            )
         )
         message = 'Exception occurred, build failed'
 

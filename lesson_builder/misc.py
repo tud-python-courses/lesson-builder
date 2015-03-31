@@ -12,6 +12,19 @@ Popen = functools.partial(
 )
 
 
+_capture_format_header = """-------------------------------------------------------------\n"""
+_capture_format_body = """   captured {}:
+-------------------------------------------------------------
+{}
+-------------------------------------------------------------
+"""
+
+
+def error_capture_format(*ms):
+    return _capture_format_header + ''.join(_capture_format_body.format(*a) for a in ms)
+
+
+
 class Monad:
     __slots__ = ()
 

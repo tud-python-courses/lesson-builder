@@ -252,6 +252,9 @@ def verify(conf, data, signature, user_agent):
             'Missing key {} in environ'.format(e)
         )
         LOGGER.debug(
-            'Headers: {}\nUserAgent: {}'.format(signature, user_agent)
+            misc.error_capture_format(
+                ('Headers', signature),
+                ('UserAgent', user_agent)
+            )
         )
         return False

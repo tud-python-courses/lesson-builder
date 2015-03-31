@@ -301,19 +301,6 @@ def finish_builds(builds):
     return builds
 
 
-error_format_string = """{}
--------------------------------------------------------------
-   captured stdout:
--------------------------------------------------------------
-{}
--------------------------------------------------------------
-   captured stderr:
--------------------------------------------------------------
-{}
--------------------------------------------------------------
-"""
-
-
 def build_and_report(wd):
     """
     Build a directory and return some printable information on how it went
@@ -328,10 +315,9 @@ def build_and_report(wd):
         if code == 0:
             return code
         else:
-            return error_format_string.format(
-                code,
-                process.stdout.read().decode() if process.stdout else '',
-                process.stderr.read().decode() if process.stderr else ''
+            return str(code) + misc.error_capture_format(
+                ('stdout', process.stdout.read().decode() if process.stdout else ''),
+                ('stderr', process.stderr.read().decode() if process.stderr else '')
             )
 
     def print_finished(builds):
