@@ -59,6 +59,11 @@ class Build:
         self.source_dir = os.path.join(base_dir, source_dir)
         self.files = files
 
+    def output_to_location(self, file):
+        return {
+            'hevea': ('-o', '{}/{}'.format(self.target_dir, output_from_command(file, self.command)))
+        }.get(self.command, ('-output-directory', self.target_dir))
+
     def abuild_file(self, file, cwd='.', env=os.environ):
         """
         Start a build of a single file and return the running process wrapper
@@ -72,10 +77,9 @@ class Build:
             os.makedirs(self.target_dir)
 
         return file, misc.Popen(
-            (
-                self.command,
-                '-output-directory', self.target_dir
-            ) + ADDITIONAL_COMMAND_OPTIONS.get(self.command, ()) + (source,),
+            (self.command,)
+            + self.output_to_location(file)
+            + ADDITIONAL_COMMAND_OPTIONS.get(self.command, ()) + (source,),
             env=env,
             cwd=cwd
         )
