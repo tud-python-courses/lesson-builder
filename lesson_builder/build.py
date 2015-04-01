@@ -18,6 +18,10 @@ TEX_OUTPUT = {
 PATHS = {
     'app': config.BASE_DIRECTORY
 }
+ADDITIONAL_COMMAND_OPTIONS = {
+    'htlatex': ('-halt-on-error',),
+    'pdflatex': ('-halt-on-error',),
+}
 
 
 def partition(condition, iterable, output_class=tuple):
@@ -70,11 +74,9 @@ class Build:
         return file, misc.Popen(
             (
                 self.command,
-                '-halt-on-error',
                 '-interaction=nonstopmode',
-                '-output-directory', self.target_dir,
-                source
-            ),
+                '-output-directory', self.target_dir
+            ) + ADDITIONAL_COMMAND_OPTIONS.get(self.command, ()) + (source,),
             env=env,
             cwd=cwd
         )
@@ -87,7 +89,7 @@ class Build:
         """
         if not os.path.exists(self.target_dir):
             os.makedirs(self.target_dir)
-        return tuple(self.abuild_file(file, cwd=cwd) for file in self.files)
+        return tuple(self.abuild_file(file, cwd=cwd, env=env) for file in self.files)
 
 
 class Include:
