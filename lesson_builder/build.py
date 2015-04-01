@@ -19,8 +19,8 @@ PATHS = {
     'app': config.BASE_DIRECTORY
 }
 ADDITIONAL_COMMAND_OPTIONS = {
-    'htlatex': ('-halt-on-error',),
-    'pdflatex': ('-halt-on-error',),
+    'htlatex': ('-halt-on-error', '-interaction=nonstopmode',),
+    'pdflatex': ('-halt-on-error', '-interaction=nonstopmode',),
 }
 
 
@@ -74,7 +74,6 @@ class Build:
         return file, misc.Popen(
             (
                 self.command,
-                '-interaction=nonstopmode',
                 '-output-directory', self.target_dir
             ) + ADDITIONAL_COMMAND_OPTIONS.get(self.command, ()) + (source,),
             env=env,
