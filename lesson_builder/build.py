@@ -50,14 +50,23 @@ class Build:
     """
     Abstracts builds
     """
-    def __init__(self, name, command, target_dir, source_dir, files, base_dir=''):
+    def __init__(self, name, command, target_dir, source_dir, files):
         self.name = name
         if command not in TEX_OUTPUT:
             raise ValueError('Unrecognized TeX command {}'.format(command))
         self.command = command
-        self.target_dir = os.path.join(base_dir, target_dir)
-        self.source_dir = os.path.join(base_dir, source_dir)
+        self.target_dir = target_dir
+        self.source_dir = source_dir
         self.files = files
+
+    @classmethod
+    def relative(cls, target_dir, source_dir, *args, base_dir='', **kwargs):
+        return cls(
+            *args,
+            target_dir=os.path.join(base_dir, target_dir),
+            source_dir=os.path.join(base_dir, source_dir),
+            **kwargs
+        )
 
     def output_to_location(self, file):
         return {
@@ -99,25 +108,22 @@ class Include:
     """
     Abstract include
     """
-    def __init__(self, repository=None, directory=None, target_dir=None):
+    def __init__(self, repository=None, directory=None):
         self.repository = repository
         self.directory = directory
-        self.target_dir = target_dir
 
     @classmethod
-    def from_config(cls, git_url, directory=None, target_dir=None):
+    def from_config(cls, git_url, directory=None):
         """
         Alternative constructor from the config dict:
 
         :param git_url: url
         :param directory:
-        :param target_dir:
         :return:
         """
         return cls(
             github.GitRepository.from_url(git_url),
-            directory,
-            target_dir
+            directory
         )
 
     @classmethod
@@ -125,8 +131,7 @@ class Include:
             cls,
             base_dir,
             git_url=None,
-            directory=None,
-            target_dir=None
+            directory=None
     ):
         """
         Alternative constructor from the config arguments
@@ -135,13 +140,11 @@ class Include:
         :param base_dir:
         :param git_url:
         :param directory:
-        :param target_dir:
         :return:
         """
         return cls.from_config(
             git_url,
-            os.path.join(base_dir, directory),
-            os.path.join(base_dir, target_dir)
+            os.path.join(base_dir, directory)
         )
 
 
@@ -264,7 +267,7 @@ def abuild_directory(wd: str, env: dict=os.environ) -> ((Build, subprocess.Popen
     finished_includes = build_includes(conf, wd, env)
 
     builds = (
-        Build(name, base_dir=wd, **b_conf)
+        Build.relative(name, base_dir=wd, **b_conf)
         for name, b_conf in conf.get('builds', {}).items()
     )
 
