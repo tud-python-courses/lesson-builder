@@ -147,22 +147,28 @@ def refresh_includes(includes):
     :param includes:
     :return:
     """
+
+    wait = lambda a: (a[0], a[1].wait())
+
+    code_is_0 = lambda a: a[1] == 0
+
     # calculating pull results
     pull_results = map(
-        lambda a: (a[0], a[1].wait()),
+        wait,
         # starting pulls
         tuple((i, i.repository.apull(i.directory)) for i in includes)
     )
-    pull_success, pull_failed = partition(lambda a: a[1] == 0, pull_results)
+    pull_success, pull_failed = partition(code_is_0, pull_results)
     clone_results = map(
-        lambda a: (a[0], a[1].wait()),
+        wait,
         tuple(
             (include, include.repository.aclone(include.directory))
-            for include, status in pull_failed)
+            for include, status in pull_failed
+        )
     )
 
     clone_success, clone_failed = partition(
-        lambda a: a[1] == 0,
+        code_is_0,
         clone_results
     )
 
@@ -315,9 +321,11 @@ def build_and_report(wd):
         if code == 0:
             return code
         else:
-            return str(code) + misc.error_capture_format(
-                ('stdout', process.stdout.read().decode() if process.stdout else ''),
-                ('stderr', process.stderr.read().decode() if process.stderr else '')
+            return '{}\n{}'.format(
+                code, misc.error_capture_format(
+                    ('stdout', process.stdout.read().decode() if process.stdout else ''),
+                    ('stderr', process.stderr.read().decode() if process.stderr else '')
+                )
             )
 
     def print_finished(builds):
