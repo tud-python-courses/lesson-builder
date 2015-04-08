@@ -419,7 +419,7 @@ def handle_request():
         )
         LOGGER.debug(
             misc.error_capture_format(
-                ('traceback', traceback.format_tb(sys.exc_info()[2]))
+                ('traceback', '\n'.join(traceback.format_tb(sys.exc_info()[2])))
             )
         )
         message = 'Exception occurred, build failed'
