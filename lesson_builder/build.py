@@ -267,7 +267,7 @@ def abuild_directory(wd: str, env: dict=os.environ) -> ((Build, subprocess.Popen
     finished_includes = build_includes(conf, wd, env)
 
     builds = (
-        Build.relative(name, base_dir=wd, **b_conf)
+        Build.relative(name=name, base_dir=wd, **b_conf)
         for name, b_conf in conf.get('builds', {}).items()
     )
 
