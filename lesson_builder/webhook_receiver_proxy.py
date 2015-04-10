@@ -412,9 +412,8 @@ def handle_request():
     except Exception as e:
         # we catch any exception and log them before it might accidentally get reported
         LOGGER.critical(
-            'Caught build exception {} with message: {}\n'.format(
-                e.__class__.__name__,
-                e.__cause__
+            'Caught build exception {}'.format(
+                repr(e)
             )
         )
         LOGGER.debug(
