@@ -407,7 +407,7 @@ def handle_request():
         
         try:
             payload = sys.stdin.read()
-        except TypeError as e:
+        except UnicodeDecodeError as e:
             LOGGER.error(e)
             LOGGER.error('Retrying with utf-8 encoding')
             payload = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8').read()    
