@@ -406,12 +406,8 @@ def handle_request():
 
         # _, ce = cgi.parse_header(get_header(CONTENT_TYPE))
         
-        try:
-            payload = sys.stdin.read()
-        except UnicodeDecodeError as e:
-            LOGGER.error(e)
-            LOGGER.error('Retrying with utf-8 encoding')
-            payload = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8').read()    
+        
+        payload = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8').read()    
         
         if not payload:
             message = ok(body=hello)
