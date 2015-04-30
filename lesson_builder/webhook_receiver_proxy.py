@@ -404,7 +404,13 @@ def handle_request():
     try:
 
         # _, ce = cgi.parse_header(get_header(CONTENT_TYPE))
-        payload = sys.stdin.read(encoding='utf-8')    
+        
+        try:
+            payload = sys.stdin.read()
+        except TypeError as e:
+            LOGGER.error(e)
+            LOGGER.error('Retrying with utf-8 encoding')
+            payload = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8').read()    
         
         if not payload:
             message = ok(body=hello)
