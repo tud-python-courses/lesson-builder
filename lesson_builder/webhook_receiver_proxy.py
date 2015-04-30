@@ -404,9 +404,7 @@ def handle_request():
     try:
 
         # _, ce = cgi.parse_header(get_header(CONTENT_TYPE))
-        payload = sys.stdin.read()
-        if isinstance(p, bytes):
-            payload = payload.decode('utf-8')    
+        payload = sys.stdin.read(encoding='utf-8')    
         
         if not payload:
             message = ok(body=hello)
