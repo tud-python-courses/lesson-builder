@@ -9,6 +9,7 @@ import sys
 import json
 import logging
 import os
+import io
 
 from . import github, build, config
 import traceback
