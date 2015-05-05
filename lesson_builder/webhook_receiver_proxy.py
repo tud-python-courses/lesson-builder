@@ -431,6 +431,6 @@ def handle_request():
         )
         message = 'Exception occurred, build failed'
 
-    print(ok_handled_header if not is_hook else ok_html_headers)
+    print(ok_handled_header if is_hook else ok_html_headers)
     print()
     print(message)
