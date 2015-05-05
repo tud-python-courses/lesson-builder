@@ -402,17 +402,21 @@ def handle_request():
     # we return ok in any case
     # we don't necessarily want github to know of our problems
 
+    is_hook = False
+
     try:
 
         # _, ce = cgi.parse_header(get_header(CONTENT_TYPE))
-        
-        
-        payload = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8').read()    
-        
+
+
+        payload = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8').read()
+
         if not payload:
             message = ok(body=hello)
+            is_hook = False
         else:
             message = do(payload)
+            is_hook = True
     except Exception as e:
         # we catch any exception and log them before it might accidentally get reported
         LOGGER.critical(
@@ -427,6 +431,6 @@ def handle_request():
         )
         message = 'Exception occurred, build failed'
 
-    print(ok_handled_header)
+    print(ok_handled_header if not is_hook else ok_html_headers)
     print()
     print(message)
