@@ -80,15 +80,20 @@ class Build:
         :param file: file to build
         :return:
         """
-        source = os.path.join(self.source_dir, file)
+        source = file
 
         if not os.path.exists(self.target_dir):
             os.makedirs(self.target_dir)
 
-        return file, misc.Popen(
-            (self.command,)
+        cmd = ((self.command,)
             + self.output_to_location(file)
-            + ADDITIONAL_COMMAND_OPTIONS.get(self.command, ()) + (source,),
+            + ADDITIONAL_COMMAND_OPTIONS.get(self.command, ())
+            + (source,))
+
+        # print(cmd)
+
+        return file, misc.Popen(
+            cmd,
             env=env,
             cwd=cwd
         )
@@ -211,23 +216,23 @@ def refresh_tex_includes(repo: github.GitRepository, directory):
     repo.refresh(directory)
 
 
-def build_includes(conf: dict, wd: str, env: dict) -> ((Build, subprocess.Popen), ...):
+def build_includes(conf: dict, wd: str, env: dict):
     includes_folder = os.path.join(wd, conf.get('includes_directory', ''))
 
-    includes = tuple(
+    includes = [
         Include.relative_to(includes_folder, **i) for i in conf.get('include', ())
-    )
+    ]
 
-    building = tuple(itertools.chain.from_iterable(
+    building = list(itertools.chain.from_iterable(
         abuild_directory(include.directory, env=env)
         for include in refresh_includes(includes)
     ))
 
-    finished = finish_builds(building)
+    finished = [(a, finish_builds(b)) for a, b in building]
     return finished
 
 
-def handle_env_conf(conf: dict, env: dict) -> dict:
+def handle_env_conf(conf: dict, env: dict):
     if 'tex_include' in conf:
         template_dir = conf['tex_include']['directory'].format(**PATHS)
         repo = github.GitRepository.from_url(conf['tex_includes']['clone_url'])
@@ -242,7 +247,7 @@ def handle_env_conf(conf: dict, env: dict) -> dict:
         return env
 
 
-def abuild_directory(wd: str, env: dict=os.environ) -> ((Build, subprocess.Popen), ...):
+def abuild_directory(wd: str, env=os.environ):
     """
     Asynchronously build whats defined in the build_conf in that directory
     returns an empty tuple if something fails
@@ -272,7 +277,7 @@ def abuild_directory(wd: str, env: dict=os.environ) -> ((Build, subprocess.Popen
     )
 
     # this catches any FileNotFoundError's and logs them so we still build the good configs
-    building_own = tuple(catch_abuilds(builds, env=env))
+    building_own = list(catch_abuilds(builds, env=env))
 
     return finished_includes + building_own
 
@@ -305,8 +310,9 @@ def finish_builds(builds):
     :param builds:
     :return:
     """
-
     for file, process in builds:
+        # print(file)
+        # print(process)
         if process.poll() is None:
             try:
                 process.wait(config.BUILD_TIMEOUT)
@@ -344,6 +350,7 @@ def build_and_report(wd):
         :param builds:
         :return:
         """
+
         return '\n'.join(
             'Build {} with {} files:\n      {}'.format(
                 build.name, len(building_files), '\n      '.join(
