@@ -321,16 +321,7 @@ def finish_builds(builds):
     return builds
 
 
-def build_and_report(wd):
-    """
-    Build a directory and return some printable information on how it went
-
-    :param wd: working directory
-    :return:
-    """
-    building = abuild_directory(wd)
-
-    def format_status(process):
+def format_status(process):
         code = process.returncode
         if code == 0:
             return code
@@ -342,29 +333,37 @@ def build_and_report(wd):
                 )
             )
 
-    def print_finished(builds):
-        """
-        Transform the finished builds into some useful printable information
-        about their status
+def print_finished(builds):
+    """
+    Transform the finished builds into some useful printable information
+    about their status
 
-        :param builds:
-        :return:
-        """
+    :param builds:
+    :return:
+    """
 
-        return '\n'.join(
-            'Build {} with {} files:\n      {}'.format(
-                build.name, len(building_files), '\n      '.join(
-                    '{}   ->   {}    with code {}'.format(
-                        file,
-                        output_from_command(file, build.command),
-                        format_status(process)
-                    )
-                    for file, process in (
-                        finish_builds(building_files)
-                    )
+    return '\n'.join(
+        'Build {} with {} files:\n      {}'.format(
+            build.name, len(building_files), '\n      '.join(
+                '{}   ->   {}    with code {}'.format(
+                    file,
+                    output_from_command(file, build.command),
+                    format_status(process)
+                )
+                for file, process in (
+                    finish_builds(building_files)
                 )
             )
-            for build, building_files in builds
         )
+        for build, building_files in builds
+    )
 
-    return print_finished(building)
+
+def build_and_report(wd):
+    """
+    Build a directory and return some printable information on how it went
+
+    :param wd: working directory
+    :return:
+    """
+    return print_finished(abuild_directory(wd))
