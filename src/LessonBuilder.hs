@@ -1,21 +1,23 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns   #-}
 {-# LANGUAGE TemplateHaskell  #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies     #-}
 module LessonBuilder where
 
 
 import           ClassyPrelude              hiding (async)
 import           Control.Concurrent.Async
-import           Control.Monad.Except (ExceptT(..), runExceptT, throwError)
+import           Control.Monad.Except       (ExceptT (..), runExceptT,
+                                             throwError)
+import           Crypto.Hash
+import           Crypto.Hash.Algorithms
 import           Crypto.MAC.HMAC
-import Crypto.Hash.Algorithms
-import Crypto.Hash
 import           Data.Aeson
 import           Data.Aeson.TH
 import           Data.Aeson.Types
+import qualified Data.ByteString.Char8      as BS
 import qualified Data.ByteString.Lazy.Char8 as B
-import qualified Data.ByteString.Char8 as BS
+import qualified Data.Foldable              as F
 import           Network.HTTP.Types
 import           Network.HTTP.Types.Header
 import           Network.URI
@@ -26,7 +28,6 @@ import           System.FilePath
 import           System.Log.Logger
 import           System.Process
 import           Text.Printf
-import qualified Data.Foldable as F
 
 
 data Include = Include
@@ -175,7 +176,7 @@ asyncBuilder = liftIO . async . runExceptT
 
 
 waitBuilder :: Async (Either String a) -> LBuilder a
-waitBuilder = ExceptT . wait 
+waitBuilder = ExceptT . wait
 
 
 buildAll :: Build -> LBuilder [Async (Either String ())]
@@ -244,7 +245,7 @@ buildProject directory = do
 
 repoToUrl :: Repo -> String
     -- TODO Use host
-repoToUrl Repo{repoName} = "https://github.com/" ++ repoName 
+repoToUrl Repo{repoName} = "https://github.com/" ++ repoName
 
 
 handleEvent :: WatchConf -> Event -> IO ()
@@ -261,7 +262,7 @@ handleEvent WatchConf{watched, reposDirectory} = handle
                             return ()
                         Just Watch{directory} -> do
                             wd <- liftIO $ getCurrentDirectory
-                            makeInclude $ Include 
+                            makeInclude $ Include
                                 { includeDirectory = wd </> reposDirectory </> directory
                                 , includeRepository = repoToUrl eventRepo
                                 }

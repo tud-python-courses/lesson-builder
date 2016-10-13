@@ -19,7 +19,7 @@ library
   exposed-modules:   LessonBuilder
   -- other-modules:       
   -- other-extensions:    
-  build-depends:       base >=4.8 && <4.9
+  build-depends:       base >=4.8 && <5
                      , warp
                      , wai
                      , text
@@ -51,7 +51,12 @@ executable lesson-builder-exe
   hs-source-dirs:      app
   build-depends:       base <5
                      , lesson-builder 
+                     , classy-prelude
                      , hslogger
+                     , wai
+                     , optparse-applicative
+                     , warp
+                     , aeson
   default-language:    Haskell2010
   default-extensions:  MultiParamTypeClasses
                      , NoImplicitPrelude
