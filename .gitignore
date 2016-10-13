@@ -58,8 +58,9 @@ Gemfile.lock
 .idea/
 
 
-dynamic_content/
 repos/
 watch_conf.json
 build_conf.json
 cgi-bin/
+.cabal-sandbox/
+cabal.sandbox.config
