@@ -48,6 +48,7 @@ library
 
 executable lesson-builder-exe
   main-is:             Main.hs
+  other-modules:       Common
   hs-source-dirs:      app
   build-depends:       base <5
                      , lesson-builder 
@@ -56,7 +57,31 @@ executable lesson-builder-exe
                      , wai
                      , optparse-applicative
                      , warp
+                     , directory
                      , aeson
+                     , mtl
+                     , directory
+                     , http-types
+  default-language:    Haskell2010
+  default-extensions:  MultiParamTypeClasses
+                     , NoImplicitPrelude
+                     , TupleSections
+                     , LambdaCase
+
+executable lesson-builder-cgi
+  main-is:             CGIMain.hs
+  other-modules:       Common
+  hs-source-dirs:      app
+  build-depends:       base <5
+                     , lesson-builder 
+                     , classy-prelude
+                     , hslogger
+                     , optparse-applicative
+                     , aeson
+                     , cgi
+                     , bytestring
+                     , directory
+                     , mtl
   default-language:    Haskell2010
   default-extensions:  MultiParamTypeClasses
                      , NoImplicitPrelude

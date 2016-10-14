@@ -5,49 +5,41 @@ module Main where
 
 import           ClassyPrelude
 import           Data.Aeson
-import           LessonBuilder
 import           Network.Wai.Handler.Warp
-import           Options.Applicative
+import           Network.Wai
+import Common
+import Control.Monad.Except
+import Options.Applicative
+import Network.HTTP.Types
+import System.Directory
+import LessonBuilder
 
 
-data Opts = Opts { logLocation :: FilePath
-                 , watchConf   :: FilePath
-                 , port        :: Int
-                 }
 
-
-optsParser :: ParserInfo Opts
-optsParser = info (helper <*> struct) frame
+app :: FilePath -> WatchConf -> Application
+app logLocation watchConf request respond = do
+    body <- lazyRequestBody request 
+    res <- runExceptT $ do
+        eventHeader <- getHeader "X-GitHub-Event"
+        userAgent <- maybe (throwError "No user agent found") return $ requestHeaderUserAgent request 
+        handleCommon logLocation watchConf body userAgent eventHeader signature
+    case res of
+        Left err -> respond $ responseLBS badRequest400 [] err
+        Right v -> respond $ responseLBS ok200 [] v
   where
-    frame = header "lesson-builder, a webhook endpoint" ++ fullDesc 
-    struct = Opts
-        <$> strOption 
-                (  long "log-location" 
-                ++ short 'l' 
-                ++ metavar "PATH" 
-                ++ help "where to write the log to"
-                )
-        <*> strOption 
-                (  long "watch-conf" 
-                ++ short 'w' 
-                ++ metavar "PATH" 
-                ++ help "location of the watch config (defaults to watch_conf.json)" 
-                ++ value "watch_conf.json"
-                )
-        <*> option auto 
-                (  long "port" 
-                ++ short 'p' 
-                ++ metavar "INTEGER" 
-                ++ help "port to bind to (defaults to 8000)" 
-                ++ value 8000
-                )
+    signature = lookup "Signature" $ requestHeaders request
+    getHeader h = maybe (throwError "Missing header") return $ lookup h $ requestHeaders request 
 
-
+-- TODO configure log
 main :: IO ()
 main = do
     Opts{..} <- execParser optsParser
     raw <- readFile watchConf
     case eitherDecode raw of
         Left err -> putStrLn (pack err)
-        Right conf -> run port $ app logLocation conf
+        Right conf -> do
+            prepareLogger logLocation
+            maybe (return ()) (createDirectoryIfMissing True) (dataDirectory conf)
+            absLogLoc <- makeAbsolute logLocation
+            run port $ app absLogLoc conf
 

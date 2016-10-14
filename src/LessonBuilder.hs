@@ -8,7 +8,7 @@ module LessonBuilder where
 import           ClassyPrelude              hiding (async)
 import           Control.Concurrent.Async
 import           Control.Monad.Except       (ExceptT (..), runExceptT,
-                                             throwError)
+                                             throwError, MonadError)
 import           Crypto.Hash
 import           Crypto.Hash.Algorithms
 import           Crypto.MAC.HMAC
@@ -18,10 +18,6 @@ import           Data.Aeson.Types
 import qualified Data.ByteString.Char8      as BS
 import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.Foldable              as F
-import           Network.HTTP.Types
-import           Network.HTTP.Types.Header
-import           Network.URI
-import           Network.Wai
 import           System.Directory
 import           System.Exit
 import           System.FilePath
@@ -80,8 +76,7 @@ repeatsMap = mapFromList
 
 
 data Build = Build
-    { buildName :: String
-    , command   :: String
+    { command   :: String
     , targetDir :: FilePath
     , sourceDir :: FilePath
     , files     :: [FilePath]
@@ -98,20 +93,26 @@ data WatchConf = WatchConf
     { dataDirectory  :: Maybe FilePath
     , watched        :: [Watch]
     , secret         :: Maybe String
-    , reposDirectory :: FilePath
+    , reposDirectory :: Maybe FilePath
     }
 
 
 data CommitData = CommitData { commitMessage :: String }
 
 
-data Event
-    = Push
-        { eventRepo       :: Repo
-        , eventHeadCommit :: CommitData
+data Event 
+    = PushEvent Push 
+    | PingEvent Ping
+
+
+data Push = Push
+        { pushRepository       :: Repo
+        , pushHeadCommit :: CommitData
         }
-    | Ping
-        { eventRepo :: Repo
+
+
+data Ping = Ping
+        { pingRepository :: Repo
         , hookId    :: Int
         , hook      :: Value
         }
@@ -119,7 +120,7 @@ data Event
 
 data Repo = Repo
     { repoName :: String
-    , repoId   :: String
+    , repoId   :: Int
     , apiUrl   :: String
     }
 
@@ -140,11 +141,18 @@ let dropPrefix p t = fromMaybe t $ stripPrefix p t
         [ deriveJSON (prefixOpts "commit") ''CommitData
         , deriveJSON (prefixOpts "include") ''Include
         , deriveJSON (prefixOpts "build") ''Build
-        , deriveJSON (prefixOpts "buildConf") ''BuildConf
-        , deriveJSON (prefixOpts "event") ''Event
+        , deriveJSON (prefixOpts "ping") ''Ping
+        , deriveJSON (prefixOpts "push") ''Push
         , deriveJSON (prefixOpts "watch") ''Watch
         , deriveJSON defaultOptions { fieldLabelModifier = camelTo2 '_' } ''WatchConf
         ]
+
+
+instance FromJSON BuildConf where
+    parseJSON (Object o) = BuildConf
+        <$> o .: "builds"
+        <*> o .:? "includes" .!= []
+    parseJSON _ = mzero
 
 
 type LBuilder = ExceptT String IO
@@ -165,7 +173,7 @@ buildIt Build{command, targetDir, sourceDir} file = do
         Just (ExitSuccess, _, _) -> return ()
         Just (ExitFailure i, stdout, stderr) -> do
             liftIO $ errorM "worker" $ printf "Build failed with %d for command %s (%d repeats)\n------stderr------\n%s------stdout------\n%s\n" i command repeats stderr stdout
-            throwError $ stderr
+            throwError stderr
   where
     repeats = fromMaybe 1 $ lookup command repeatsMap
     process = (proc command (["-output-directory", targetDir] ++ fromMaybe [] (lookup command additionalCommandOptions))) { cwd = Just sourceDir }
@@ -191,20 +199,17 @@ runBuildersAndWait :: Traversable f => f (LBuilder ()) -> LBuilder ()
 runBuildersAndWait = traverse asyncBuilder >=> waitForBuilders
 
 
-verifyUAgent :: WatchConf -> ByteString -> Request -> IO Bool
-verifyUAgent WatchConf{secret = Nothing} _ request = return True
-verifyUAgent WatchConf{secret = Just secret'} payload request =
-    case (,) <$> lookup "signature" (requestHeaders request) <*> requestHeaderUserAgent request of
-        Just (signature, userAgent)
-            | "Github-Hookshot/" `isPrefixOf` userAgent ->
-                case digestFromByteString signature of
-                    Nothing -> err "Uncomputable digest"
-                    Just expected | expected == computed -> return True
-                    _ -> err "Digests do not match"
-        Nothing -> err "Missing header"
-        _ -> err "Wrong user agent"
+verifyUAgent :: (MonadIO m, MonadError B.ByteString m) 
+             => WatchConf -> ByteString -> ByteString -> Maybe ByteString -> m ()
+verifyUAgent WatchConf{secret = Nothing} _ _ _ = return ()
+verifyUAgent WatchConf{secret = Just secret'} payload userAgent signature =
+    if "Github-Hookshot/" `isPrefixOf` userAgent
+        then case signature >>= digestFromByteString of
+                    Nothing -> throwError "Uncomputable digest"
+                    Just real | real == computed -> return ()
+                    _ -> throwError "Digests do not match"
+        else throwError "Wrong user agent"
   where
-    err msg = errorM "verification" msg >> return False
     computed = hmacGetDigest $ hmac (BS.pack secret') payload :: Digest SHA1
 
 
@@ -212,12 +217,12 @@ gitRefresh :: String -> FilePath -> LBuilder ()
 gitRefresh url targetDir = do
     exists <- liftIO $ doesDirectoryExist targetDir
     let process = if exists
-                  then proc "git" ["clone", url, targetDir]
-                  else proc "git" ["-C", targetDir, "pull"]
+                  then proc "git" ["-C", targetDir, "pull"]
+                  else proc "git" ["clone", url, targetDir]
     (code, stdout, stderr) <- liftIO $ readCreateProcessWithExitCode process ""
     case code of
         ExitSuccess -> return ()
-        ExitFailure c -> throwError $ "Git process failed with" ++ stdout
+        ExitFailure c -> throwError $ "Git process failed with" ++ stdout ++ "\n" ++ stderr
 
 
 makeInclude :: Include -> LBuilder ()
@@ -229,7 +234,7 @@ makeInclude Include{includeRepository, includeDirectory} = do
 buildProject :: FilePath -> LBuilder ()
 buildProject directory = do
     raw <- readFile $ directory </> buildConfigName
-    buildConf <- either (const $ throwError "Unreadable build configuration") return $ eitherDecode raw
+    buildConf <- either (throwError . ("Unreadable build configuration: " ++)) return $ eitherDecode raw
 
     let relativeIncludes = map (\i -> i {includeDirectory = directory </> includeDirectory i}) (includes buildConf)
 
@@ -251,57 +256,62 @@ repoToUrl Repo{repoName} = "https://github.com/" ++ repoName
 handleEvent :: WatchConf -> Event -> IO ()
 handleEvent WatchConf{watched, reposDirectory} = handle
   where
-    handle Ping{} = errorM "worker" "Ping event should not be handeled in worker"
-    handle Push{eventRepo, eventHeadCommit} = do
+    handle (PingEvent Ping{}) = errorM "worker" "Ping event should not be handeled in worker"
+    handle (PushEvent Push{pushRepository, pushHeadCommit}) = do
         res <- runExceptT $
                     -- TODO handle special events (push to own repo)
-                    case lookup (repoName eventRepo) watchMap of
+                    case lookup (repoName pushRepository) watchMap of
                         Nothing -> throwError "Unrecognized repository"
-                        _ | any (`isInfixOf` commitMessage eventHeadCommit) skipStrings -> do
+                        _ | any (`isInfixOf` commitMessage pushHeadCommit) skipStrings -> do
                             liftIO $ infoM "worker" "skipping commit due to skip message"
                             return ()
                         Just Watch{directory} -> do
-                            wd <- liftIO $ getCurrentDirectory
-                            makeInclude $ Include
-                                { includeDirectory = wd </> reposDirectory </> directory
-                                , includeRepository = repoToUrl eventRepo
+                            wd <- liftIO getCurrentDirectory
+                            makeInclude Include
+                                { includeDirectory = wd </> fromMaybe "." reposDirectory </> directory
+                                , includeRepository = repoToUrl pushRepository
                                 }
 
         either (errorM "worker") return res
     watchMap = mapFromList $ map (watchName &&& id) watched :: HashMap String Watch
 
 
-app :: FilePath -> WatchConf -> Application
-app logLocation watchConf request respond = do
-    body <- lazyRequestBody request
-    -- If the PING event does not send the signature this verification
-    -- needs to be moved to after the payload has been parsed and the event type determined
-    verified <- verifyUAgent watchConf (toStrict body) request
-    if verified
-        then
-            case eitherDecode' body of
-                Left err -> do
-                    errorM "receiver" "Unparseable json"
-                    errorM "receiver" err
-                    respond $ responseLBS badRequest400 [] $ "Unparseable json. For details on the error refer to the log at " ++ bsLogLoc
-                Right Ping{hookId, hook} -> do
-                    infoM "receiver" "Ping received"
-                    let fileName = printf "hook_%d.conf.json" hookId
-                        filePath = directory </> fileName
-                    isDir <- doesDirectoryExist filePath
-                    exists <- doesFileExist filePath
-                    if isDir
-                        then do
-                            errorM "receiver" "Hook config location is directory"
-                            respond $ responseLBS badRequest400 [] $ "Ping error. For error details refer top the log at " ++ bsLogLoc
-                        else do
-                            writeFile filePath $ encode hook
-                            respond $ responseLBS ok200 [] $ "Ping received. Data saved in " ++ B.pack filePath
-                Right event -> do
-                    void $ async $ handleEvent watchConf event
-                    respond $ responseLBS ok200 [] $ "Hook received. For build results refer to the log at " ++ bsLogLoc
-        else respond $ responseLBS badRequest400 [] $ "Unverifiable. For details on the error refer to the log at " ++ bsLogLoc
+handleCommon :: MonadIO m 
+             => FilePath 
+             -> WatchConf 
+             -> B.ByteString -- ^ Request body
+             -> ByteString -- ^ User Agent string
+             -> ByteString -- ^ Event type
+             -> Maybe ByteString -- ^ Signature
+             -> ExceptT B.ByteString m B.ByteString
+handleCommon logLocation watchConf body userAgent eventHeader signature = do 
+    verifyUAgent watchConf (toStrict body) userAgent signature
+    let ev = case eventHeader of
+                "push" -> PushEvent <$> eitherDecode body
+                "ping" -> PingEvent <$> eitherDecode body
+                a -> Left $ "unknown event type " ++ BS.unpack a
+    case ev of
+        Left err -> do
+            liftIO $ errorM "receiver" "Unparseable json"
+            liftIO $ errorM "receiver" err
+            throwError $ "Unparseable json. For details on the error refer to the log at " ++ bsLogLoc
+        Right (PingEvent Ping{hookId, hook}) -> do
+            liftIO $ infoM "receiver" "Ping received"
+            let fileName = printf "hook_%d.conf.json" hookId
+                filePath = directory </> fileName
+            isDir <- liftIO $ doesDirectoryExist filePath
+            exists <- liftIO $ doesFileExist filePath
+            if isDir
+                then do
+                    liftIO $ errorM "receiver" "Hook config location is directory"
+                    throwError $ "Ping error. For error details refer top the log at " ++ bsLogLoc
+                else do
+                    liftIO $ writeFile filePath $ encode hook
+                    return $ "Ping received. Data saved in " ++ B.pack filePath
+        Right event -> do
+            void $ liftIO $ async $ handleEvent watchConf event
+            return $ "Hook received. For build results refer to the log at " ++ bsLogLoc
   where
     directory = fromMaybe defaultDataDirectory $ dataDirectory watchConf
-    headers = requestHeaders request
     bsLogLoc = B.pack logLocation
+
