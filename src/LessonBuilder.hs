@@ -2,6 +2,10 @@
 {-# LANGUAGE NamedFieldPuns   #-}
 {-# LANGUAGE TemplateHaskell  #-}
 {-# LANGUAGE TypeFamilies     #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 module LessonBuilder where
 
 
@@ -24,17 +28,19 @@ import           System.FilePath
 import           System.Log.Logger
 import           System.Process
 import           Text.Printf
+import Data.Vector (Vector)
+import GHC.Generics
 
 
 data Include = Include
-    { includeRepository :: String
-    , includeDirectory  :: FilePath
+    { includeRepository :: !String
+    , includeDirectory  :: !FilePath
     }
 
 
 data BuildConf = BuildConf
-    { builds   :: HashMap String Build
-    , includes :: [Include]
+    { builds   :: !(HashMap String Build)
+    , includes :: !(Vector Include)
     }
 
 
@@ -50,78 +56,78 @@ skipStrings :: [String]
 skipStrings = ["[skip build]", "[build skip]"]
 
 
-additionalCommandOptions :: HashMap String [String]
+additionalCommandOptions :: HashMap Command [String]
 additionalCommandOptions = mapFromList
-    [ ("htlatex", ["-halt-on-error", "-interaction=nonstopmode"])
-    , ("pdflatex", ["-halt-on-error", "-interaction=nonstopmode"])
+    [ (HtLatex, ["-halt-on-error", "-interaction=nonstopmode"])
+    , (Pdflatex, ["-halt-on-error", "-interaction=nonstopmode"])
     ]
 
 
-texOutExt :: HashMap String String
+texOutExt :: HashMap Command String
 texOutExt = mapFromList
-    [ ("htlatex",  "html")
-    , ("pdflatex", "pdf")
-    , ("xelatex", "pdf")
-    , ("hevea", "html")
+    [ (HtLatex,  "html")
+    , (Pdflatex, "pdf")
+    , (Xelatex, "pdf")
+    , (Hevea, "html")
     ]
 
 
-repeatsMap :: HashMap String Int
-repeatsMap = mapFromList
-    [ ("htlatex", 2)
-    , ("pdflatex", 2)
-    , ("xelatex", 2)
-    , ("hevea", 2)
-    ]
+data Command 
+    = HtLatex
+    | Pdflatex
+    | Hevea
+    | Xelatex
+    | Latexmk
+    deriving (Show, Eq, Ord, Generic, Hashable) 
 
 
 data Build = Build
-    { command   :: String
-    , targetDir :: FilePath
-    , sourceDir :: FilePath
-    , files     :: [FilePath]
+    { command   :: !Command
+    , targetDir :: !FilePath
+    , sourceDir :: !FilePath
+    , files     :: !(Vector FilePath)
     }
 
 
 data Watch = Watch
-    { watchName :: String
-    , directory :: FilePath
+    { watchName :: !String
+    , directory :: !FilePath
     }
 
 
 data WatchConf = WatchConf
-    { dataDirectory  :: Maybe FilePath
-    , watched        :: [Watch]
-    , secret         :: Maybe String
-    , reposDirectory :: Maybe FilePath
+    { dataDirectory  :: !(Maybe FilePath)
+    , watched        :: !(Vector Watch)
+    , secret         :: !(Maybe String)
+    , reposDirectory :: !(Maybe FilePath)
     }
 
 
-data CommitData = CommitData { commitMessage :: String }
+data CommitData = CommitData { commitMessage :: !String }
 
 
 data Event 
-    = PushEvent Push 
-    | PingEvent Ping
+    = PushEvent !Push 
+    | PingEvent !Ping
 
 
 data Push = Push
-        { pushRepository       :: Repo
-        , pushHeadCommit :: CommitData
-        }
+    { pushRepository :: !Repo
+    , pushHeadCommit :: !CommitData
+    }
 
 
 data Ping = Ping
-        { pingRepository :: Repo
-        , hookId    :: Int
-        , hook      :: Value
-        }
+    { pingRepository :: !Repo
+    , hookId    :: !Int
+    , hook      :: !Value
+    }
 
 
 data Repo = Repo
-    { repoName :: String
-    , repoId   :: Int
-    , apiUrl   :: String
+    { repoName :: !String
+    , repoId   :: !Int
+    , apiUrl   :: !String
     }
 
 instance FromJSON Repo where
@@ -140,6 +146,7 @@ let dropPrefix p t = fromMaybe t $ stripPrefix p t
     join <$> sequence
         [ deriveJSON (prefixOpts "commit") ''CommitData
         , deriveJSON (prefixOpts "include") ''Include
+        , deriveJSON defaultOptions { constructorTagModifier = camelTo2 '_', sumEncoding = UntaggedValue } ''Command
         , deriveJSON (prefixOpts "build") ''Build
         , deriveJSON (prefixOpts "ping") ''Ping
         , deriveJSON (prefixOpts "push") ''Push
@@ -151,15 +158,15 @@ let dropPrefix p t = fromMaybe t $ stripPrefix p t
 instance FromJSON BuildConf where
     parseJSON (Object o) = BuildConf
         <$> o .: "builds"
-        <*> o .:? "includes" .!= []
+        <*> o .:? "includes" .!= mempty
     parseJSON _ = mzero
 
 
 type LBuilder = ExceptT String IO
 
 
-buildIt :: Build -> String -> LBuilder ()
-buildIt Build{command, targetDir, sourceDir} file = do
+ensureTargetDir :: FilePath -> LBuilder ()
+ensureTargetDir targetDir = do
     isDir <- liftIO $ doesDirectoryExist targetDir
     unless isDir $ do
         isFile <- liftIO $ doesFileExist targetDir
@@ -167,16 +174,26 @@ buildIt Build{command, targetDir, sourceDir} file = do
             then throwError $ printf "Target directory '%s' is file" targetDir
             else liftIO $ createDirectory targetDir
 
+
+shellBuildWithRepeat :: Command -> CreateProcess -> Int -> LBuilder ()
+shellBuildWithRepeat command process repeats = do
     res <- lastMay <$> (replicateM repeats (liftIO $ readCreateProcessWithExitCode process "") :: LBuilder [(ExitCode, String, String)])
     case res of
         Nothing -> throwError $ printf "Unexpected number of repeats: %d" repeats
         Just (ExitSuccess, _, _) -> return ()
         Just (ExitFailure i, stdout, stderr) -> do
-            liftIO $ errorM "worker" $ printf "Build failed with %d for command %s (%d repeats)\n------stderr------\n%s------stdout------\n%s\n" i command repeats stderr stdout
+            liftIO $ errorM "worker" $ printf "Build failed with %d for command %s (%d repeats)\n------stderr------\n%s------stdout------\n%s\n" i (show command) repeats stderr stdout
             throwError stderr
+
+
+buildIt :: Build -> String -> LBuilder ()
+buildIt Build{command, targetDir, sourceDir} file = do
+    ensureTargetDir targetDir    
+    shellBuildWithRepeat command process repeats
   where
-    repeats = fromMaybe 1 $ lookup command repeatsMap
-    process = (proc command (["-output-directory", targetDir] ++ fromMaybe [] (lookup command additionalCommandOptions))) { cwd = Just sourceDir }
+    commandStr = toLower $ show command
+    repeats = 2
+    process = (proc commandStr (["-output-directory", targetDir] ++ fromMaybe [] (lookup command additionalCommandOptions))) { cwd = Just sourceDir }
 
 
 asyncBuilder :: LBuilder a -> LBuilder (Async (Either String a))
@@ -187,7 +204,7 @@ waitBuilder :: Async (Either String a) -> LBuilder a
 waitBuilder = ExceptT . wait
 
 
-buildAll :: Build -> LBuilder [Async (Either String ())]
+buildAll :: Build -> LBuilder (Vector (Async (Either String ())))
 buildAll b = mapM (asyncBuilder . buildIt b) (files b)
 
 
@@ -240,7 +257,7 @@ buildProject directory = do
 
     runBuildersAndWait $ map makeInclude relativeIncludes
 
-    let relativeBuilds = map (relativize . snd) $ mapToList (builds buildConf)
+    let relativeBuilds = map (relativize . snd) $ fromList $ mapToList (builds buildConf)
           where relativize build = build { sourceDir = directory </> sourceDir build
                                          , targetDir = directory </> targetDir build }
 
@@ -273,11 +290,11 @@ handleEvent WatchConf{watched, reposDirectory} = handle
                                 }
 
         either (errorM "worker") return res
-    watchMap = mapFromList $ map (watchName &&& id) watched :: HashMap String Watch
+    watchMap = mapFromList $ map (watchName &&& id) $ toList watched :: HashMap String Watch
 
 
 handleCommon :: MonadIO m 
-             => FilePath 
+             => FilePath -- ^ The location of the log  
              -> WatchConf 
              -> B.ByteString -- ^ Request body
              -> ByteString -- ^ User Agent string
