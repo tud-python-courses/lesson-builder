@@ -1,18 +1,17 @@
+{-# LANGUAGE DeriveAnyClass   #-}
+{-# LANGUAGE DeriveGeneric    #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns   #-}
+{-# LANGUAGE OverloadedLists  #-}
 {-# LANGUAGE TemplateHaskell  #-}
 {-# LANGUAGE TypeFamilies     #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE OverloadedLists #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 module LessonBuilder where
 
 
 import           ClassyPrelude              hiding (async)
 import           Control.Concurrent.Async
-import           Control.Monad.Except       (ExceptT (..), runExceptT,
-                                             throwError, MonadError)
+import           Control.Monad.Except       (ExceptT (..), MonadError,
+                                             runExceptT, throwError)
 import           Crypto.Hash
 import           Crypto.Hash.Algorithms
 import           Crypto.MAC.HMAC
@@ -22,14 +21,14 @@ import           Data.Aeson.Types
 import qualified Data.ByteString.Char8      as BS
 import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.Foldable              as F
+import           Data.Vector                (Vector)
+import           GHC.Generics
 import           System.Directory
 import           System.Exit
 import           System.FilePath
 import           System.Log.Logger
 import           System.Process
 import           Text.Printf
-import Data.Vector (Vector)
-import GHC.Generics
 
 
 data Include = Include
@@ -72,13 +71,13 @@ texOutExt = mapFromList
     ]
 
 
-data Command 
+data Command
     = HtLatex
     | Pdflatex
     | Hevea
     | Xelatex
     | Latexmk
-    deriving (Show, Eq, Ord, Generic, Hashable) 
+    deriving (Show, Eq, Ord, Generic, Hashable)
 
 
 data Build = Build
@@ -106,8 +105,8 @@ data WatchConf = WatchConf
 data CommitData = CommitData { commitMessage :: !String }
 
 
-data Event 
-    = PushEvent !Push 
+data Event
+    = PushEvent !Push
     | PingEvent !Ping
 
 
@@ -119,8 +118,8 @@ data Push = Push
 
 data Ping = Ping
     { pingRepository :: !Repo
-    , hookId    :: !Int
-    , hook      :: !Value
+    , hookId         :: !Int
+    , hook           :: !Value
     }
 
 
@@ -188,7 +187,7 @@ shellBuildWithRepeat command process repeats = do
 
 buildIt :: Build -> String -> LBuilder ()
 buildIt Build{command, targetDir, sourceDir} file = do
-    ensureTargetDir targetDir    
+    ensureTargetDir targetDir
     shellBuildWithRepeat command process repeats
   where
     commandStr = toLower $ show command
@@ -216,7 +215,7 @@ runBuildersAndWait :: Traversable f => f (LBuilder ()) -> LBuilder ()
 runBuildersAndWait = traverse asyncBuilder >=> waitForBuilders
 
 
-verifyUAgent :: (MonadIO m, MonadError B.ByteString m) 
+verifyUAgent :: (MonadIO m, MonadError B.ByteString m)
              => WatchConf -> ByteString -> ByteString -> Maybe ByteString -> m ()
 verifyUAgent WatchConf{secret = Nothing} _ _ _ = return ()
 verifyUAgent WatchConf{secret = Just secret'} payload userAgent signature =
@@ -293,15 +292,15 @@ handleEvent WatchConf{watched, reposDirectory} = handle
     watchMap = mapFromList $ map (watchName &&& id) $ toList watched :: HashMap String Watch
 
 
-handleCommon :: MonadIO m 
-             => FilePath -- ^ The location of the log  
-             -> WatchConf 
+handleCommon :: MonadIO m
+             => FilePath -- ^ The location of the log
+             -> WatchConf
              -> B.ByteString -- ^ Request body
              -> ByteString -- ^ User Agent string
              -> ByteString -- ^ Event type
              -> Maybe ByteString -- ^ Signature
              -> ExceptT B.ByteString m B.ByteString
-handleCommon logLocation watchConf body userAgent eventHeader signature = do 
+handleCommon logLocation watchConf body userAgent eventHeader signature = do
     verifyUAgent watchConf (toStrict body) userAgent signature
     let ev = case eventHeader of
                 "push" -> PushEvent <$> eitherDecode body
