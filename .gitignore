@@ -62,5 +62,4 @@ repos/
 watch_conf.json
 build_conf.json
 cgi-bin/
-.cabal-sandbox/
-cabal.sandbox.config
+/.stack-work/

@@ -80,6 +80,19 @@ data Command
     deriving (Show, Eq, Ord, Generic, Hashable)
 
 
+instance ToJSON Command where
+    toJSON = String . toLower . pack . show  
+
+
+instance FromJSON Command where
+    parseJSON (String "htlatex") = return HtLatex
+    parseJSON (String "pdflatex") = return Pdflatex
+    parseJSON (String "hevea") = return Hevea
+    parseJSON (String "xelatex") = return Xelatex
+    parseJSON (String "latexmk") = return Latexmk
+    parseJSON _ = mzero 
+
+
 data Build = Build
     { command   :: !Command
     , targetDir :: !FilePath
@@ -145,7 +158,6 @@ let dropPrefix p t = fromMaybe t $ stripPrefix p t
     join <$> sequence
         [ deriveJSON (prefixOpts "commit") ''CommitData
         , deriveJSON (prefixOpts "include") ''Include
-        , deriveJSON defaultOptions { constructorTagModifier = camelTo2 '_', sumEncoding = UntaggedValue } ''Command
         , deriveJSON (prefixOpts "build") ''Build
         , deriveJSON (prefixOpts "ping") ''Ping
         , deriveJSON (prefixOpts "push") ''Push
@@ -174,21 +186,27 @@ shellBuildWithRepeat command process repeats = do
     case res of
         Nothing -> throwError $ printf "Unexpected number of repeats: %d" repeats
         Just (ExitSuccess, _, _) -> liftIO $ debugM "build" $ "Successfully executed " ++ show command
-        Just (ExitFailure i, stdout, stderr) -> do
-            liftIO $ errorM "worker" $ printf "Build failed with %d for command %s (%d repeats)\n------stderr------\n%s------stdout------\n%s\n" i (show command) repeats stderr stdout
-            throwError stderr
+        Just (ExitFailure i, _, _) -> do
+            let str = printf "Build failed with %d for command %s (%d repeats)" i (show command) repeats
+            liftIO $ errorM "worker" str
+            throwError str
+
+
+outputToDirectory :: Build -> FilePath -> [String]
+outputToDirectory Build{command=Hevea, targetDir} file = ["-o", targetDir </> file -<.> "html"]
+outputToDirectory Build{targetDir} _ = ["-output-directory", targetDir]
 
 
 buildIt :: Build -> String -> LBuilder ()
-buildIt Build{command, targetDir, sourceDir} file = do
+buildIt b@Build{command, targetDir, sourceDir} file = do
     liftIO $ debugM "worker" $ "Checking target directory " ++ targetDir 
     ensureTargetDir targetDir
-    liftIO $ debugM "worker" $ "Executing " ++ show command ++ " in " ++ sourceDir ++ " to " ++ targetDir
+    liftIO $ debugM "worker" $ printf "Executing %s in %s to %s" (show command) sourceDir targetDir
     shellBuildWithRepeat command process repeats
   where
     commandStr = toLower $ show command
     repeats = 2
-    process = (proc commandStr ([file, "-output-directory", targetDir] ++ fromMaybe [] (lookup command additionalCommandOptions))) { cwd = Just sourceDir }
+    process = (proc commandStr (file: outputToDirectory b file ++ fromMaybe [] (lookup command additionalCommandOptions))) { cwd = Just sourceDir }
 
 
 asyncBuilder :: LBuilder a -> LBuilder (Async (Either String a))
@@ -289,7 +307,7 @@ handleEvent WatchConf{watched, reposDirectory} = handle
   where
     handle (PingEvent Ping{}) = errorM "worker" "Ping event should not be handeled in worker"
     handle (PushEvent Push{pushRepository, pushHeadCommit}) = do
-        res <- runExceptT $
+        res <- catch (runExceptT $
                     -- TODO handle special events (push to own repo)
                     case lookup (repoName pushRepository) watchMap of
                         Nothing -> throwError "Unrecognized repository"
@@ -303,9 +321,13 @@ handleEvent WatchConf{watched, reposDirectory} = handle
                                 { includeDirectory = wd </> fromMaybe "." reposDirectory </> directory
                                 , includeRepository = repoToUrl pushRepository
                                 }
+                )
+                onExcept
 
         either (errorM "worker") return res
     watchMap = mapFromList $ map (watchName &&& id) $ toList watched :: HashMap String Watch
+    onExcept :: SomeException -> IO (Either String a) 
+    onExcept = return . Left . show
 
 
 handleCommon :: MonadIO m

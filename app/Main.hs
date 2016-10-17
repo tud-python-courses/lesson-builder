@@ -1,6 +1,7 @@
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Main where
 
 import           ClassyPrelude
@@ -18,6 +19,7 @@ import           System.Log.Handler        (setFormatter)
 import           System.Log.Handler.Simple
 import           System.Log.Logger
 import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Lazy.Char8 as BL
 
 
 prepareLogger :: FilePath -> IO ()
@@ -35,11 +37,18 @@ prepareLogger targetFile = do
                                 }
 
 
-app :: FilePath -> WatchConf -> Application
-app logLocation watchConf request respond = do
+readWatchConf :: (MonadIO m, MonadError BL.ByteString m) => FilePath -> m WatchConf 
+readWatchConf watchConfLoc = do
+    raw <- readFile watchConfLoc
+    either (throwError . BL.pack) return $ eitherDecode raw
+
+
+app :: FilePath -> FilePath -> Application
+app logLocation confLocation request respond = do
     infoM "server" "received request, changed"
     body <- lazyRequestBody request
     res <- runExceptT $ do
+        watchConf <- readWatchConf confLocation
         eventHeader <- getHeader "X-GitHub-Event"
         userAgent <- maybe (throwError "No user agent found") return $ requestHeaderUserAgent request
         handleCommon logLocation watchConf body userAgent eventHeader (B.unpack <$> signature)
@@ -64,5 +73,5 @@ main = do
             prepareLogger logLocation
             maybe (return ()) (createDirectoryIfMissing True) (dataDirectory conf)
             absLogLoc <- makeAbsolute logLocation
-            run port $ app absLogLoc conf
+            run port $ app absLogLoc watchConf
 
