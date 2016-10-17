@@ -6,10 +6,6 @@ import           ClassyPrelude
 import           Data.Aeson
 import           LessonBuilder
 import           Options.Applicative
-import           System.Log.Formatter
-import           System.Log.Handler        (setFormatter)
-import           System.Log.Handler.Simple
-import           System.Log.Logger
 
 
 data Opts = Opts { logLocation :: FilePath
@@ -33,27 +29,15 @@ optsParser = info (helper <*> struct) frame
                 (  long "watch-conf"
                 ++ short 'w'
                 ++ metavar "PATH"
-                ++ help "location of the watch config (defaults to watch_conf.json)"
+                ++ help "location of the watch config"
+                ++ showDefault
                 ++ value "watch_conf.json"
                 )
         <*> option auto
                 (  long "port"
                 ++ short 'p'
                 ++ metavar "INTEGER"
-                ++ help "port to bind to (defaults to 8000)"
+                ++ help "port to bind to"
+                ++ showDefault
                 ++ value 8000
                 )
-
-
-prepareLogger :: FilePath -> IO ()
-prepareLogger targetFile = do
-    fHandler <- flip setFormatter formatter <$> fileHandler targetFile DEBUG
-    updateGlobalLogger rootLoggerName $ setHandlers [fHandler, cmdHandler]
-  where
-    formatter = simpleLogFormatter "$time [$prio:$loggername] $msg"
-    cmdHandler = GenericHandler { priority = DEBUG
-                                , formatter = formatter
-                                , privData = stderr
-                                , writeFunc = hPutStrLn
-                                , closeFunc = const $ return ()
-                                }

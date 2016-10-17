@@ -13,24 +13,47 @@ import           Network.Wai
 import           Network.Wai.Handler.Warp
 import           Options.Applicative
 import           System.Directory
+import           System.Log.Formatter
+import           System.Log.Handler        (setFormatter)
+import           System.Log.Handler.Simple
+import           System.Log.Logger
+import qualified Data.ByteString.Char8 as B
 
+
+prepareLogger :: FilePath -> IO ()
+prepareLogger targetFile = do
+    updateGlobalLogger rootLoggerName (setLevel DEBUG)
+    fHandler <- flip setFormatter formatter <$> fileHandler targetFile DEBUG
+    updateGlobalLogger rootLoggerName $ setHandlers [fHandler, cmdHandler]
+  where
+    formatter = simpleLogFormatter "$time [$prio:$loggername] $msg"
+    cmdHandler = GenericHandler { priority = DEBUG
+                                , formatter = formatter
+                                , privData = stderr
+                                , writeFunc = hPutStrLn
+                                , closeFunc = const $ return ()
+                                }
 
 
 app :: FilePath -> WatchConf -> Application
 app logLocation watchConf request respond = do
+    infoM "server" "received request, changed"
     body <- lazyRequestBody request
     res <- runExceptT $ do
         eventHeader <- getHeader "X-GitHub-Event"
         userAgent <- maybe (throwError "No user agent found") return $ requestHeaderUserAgent request
-        handleCommon logLocation watchConf body userAgent eventHeader signature
+        handleCommon logLocation watchConf body userAgent eventHeader (B.unpack <$> signature)
     case res of
-        Left err -> respond $ responseLBS badRequest400 [] err
-        Right v -> respond $ responseLBS ok200 [] v
+        Left err -> do
+            liftIO $ infoM "server" "Responding error" 
+            respond $ responseLBS badRequest400 [] err
+        Right v -> do
+            liftIO $ infoM "server" "Responding okay" 
+            respond $ responseLBS ok200 [] v
   where
-    signature = lookup "Signature" $ requestHeaders request
+    signature = lookup "X-Hub-Signature" $ requestHeaders request
     getHeader h = maybe (throwError "Missing header") return $ lookup h $ requestHeaders request
 
--- TODO configure log
 main :: IO ()
 main = do
     Opts{..} <- execParser optsParser

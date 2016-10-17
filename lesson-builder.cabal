@@ -60,6 +60,7 @@ executable lesson-builder-exe
                      , warp
                      , directory
                      , aeson
+                     , bytestring
                      , mtl
                      , directory
                      , http-types

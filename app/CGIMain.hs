@@ -11,6 +11,25 @@ import           LessonBuilder
 import           Network.CGI
 import           Options.Applicative
 import           System.Directory
+import           System.Log.Formatter
+import           System.Log.Handler        (setFormatter)
+import           System.Log.Handler.Simple
+import           System.Log.Logger
+
+
+prepareLogger :: FilePath -> IO ()
+prepareLogger targetFile = do
+    updateGlobalLogger rootLoggerName (setLevel DEBUG)
+    fHandler <- flip setFormatter formatter <$> fileHandler targetFile DEBUG
+    updateGlobalLogger rootLoggerName $ setHandlers [fHandler, cmdHandler]
+  where
+    formatter = simpleLogFormatter "$time [$prio:$loggername] $msg"
+    cmdHandler = GenericHandler { priority = ERROR
+                                , formatter = formatter
+                                , privData = stderr
+                                , writeFunc = const logCGI
+                                , closeFunc = const $ return ()
+                                }
 
 
 main :: IO ()
@@ -28,7 +47,7 @@ main = do
                 body <- getBodyFPS
                 userAgent <- B.pack . fromMaybe (error "No user agent") <$> getVar "HTTP_USER_AGENT"
                 eventHeader <- B.pack . fromMaybe (error "No event header") <$> getVar "HTTP_X_GITHUB_EVENT"
-                signature <- fmap B.pack <$> getVar "HTTP_SIGNATURE"
+                signature <- getVar "HTTP_SIGNATURE"
                 res <- liftIO $ runExceptT $ handleCommon logLocation conf body userAgent eventHeader signature
                 case res of
                     Left err -> outputError 400 "Invalid Request" $ return $ BL.unpack err

@@ -165,13 +165,7 @@ type LBuilder = ExceptT String IO
 
 
 ensureTargetDir :: FilePath -> LBuilder ()
-ensureTargetDir targetDir = do
-    isDir <- liftIO $ doesDirectoryExist targetDir
-    unless isDir $ do
-        isFile <- liftIO $ doesFileExist targetDir
-        if isFile
-            then throwError $ printf "Target directory '%s' is file" targetDir
-            else liftIO $ createDirectory targetDir
+ensureTargetDir = liftIO . createDirectoryIfMissing True
 
 
 shellBuildWithRepeat :: Command -> CreateProcess -> Int -> LBuilder ()
@@ -179,7 +173,7 @@ shellBuildWithRepeat command process repeats = do
     res <- lastMay <$> (replicateM repeats (liftIO $ readCreateProcessWithExitCode process "") :: LBuilder [(ExitCode, String, String)])
     case res of
         Nothing -> throwError $ printf "Unexpected number of repeats: %d" repeats
-        Just (ExitSuccess, _, _) -> return ()
+        Just (ExitSuccess, _, _) -> liftIO $ debugM "build" $ "Successfully executed " ++ show command
         Just (ExitFailure i, stdout, stderr) -> do
             liftIO $ errorM "worker" $ printf "Build failed with %d for command %s (%d repeats)\n------stderr------\n%s------stdout------\n%s\n" i (show command) repeats stderr stdout
             throwError stderr
@@ -187,12 +181,14 @@ shellBuildWithRepeat command process repeats = do
 
 buildIt :: Build -> String -> LBuilder ()
 buildIt Build{command, targetDir, sourceDir} file = do
+    liftIO $ debugM "worker" $ "Checking target directory " ++ targetDir 
     ensureTargetDir targetDir
+    liftIO $ debugM "worker" $ "Executing " ++ show command ++ " in " ++ sourceDir ++ " to " ++ targetDir
     shellBuildWithRepeat command process repeats
   where
     commandStr = toLower $ show command
     repeats = 2
-    process = (proc commandStr (["-output-directory", targetDir] ++ fromMaybe [] (lookup command additionalCommandOptions))) { cwd = Just sourceDir }
+    process = (proc commandStr ([file, "-output-directory", targetDir] ++ fromMaybe [] (lookup command additionalCommandOptions))) { cwd = Just sourceDir }
 
 
 asyncBuilder :: LBuilder a -> LBuilder (Async (Either String a))
@@ -216,16 +212,20 @@ runBuildersAndWait = traverse asyncBuilder >=> waitForBuilders
 
 
 verifyUAgent :: (MonadIO m, MonadError B.ByteString m)
-             => WatchConf -> ByteString -> ByteString -> Maybe ByteString -> m ()
+             => WatchConf -> ByteString -> ByteString -> Maybe String -> m ()
 verifyUAgent WatchConf{secret = Nothing} _ _ _ = return ()
-verifyUAgent WatchConf{secret = Just secret'} payload userAgent signature =
-    if "Github-Hookshot/" `isPrefixOf` userAgent
-        then case signature >>= digestFromByteString of
-                    Nothing -> throwError "Uncomputable digest"
-                    Just real | real == computed -> return ()
-                    _ -> throwError "Digests do not match"
-        else throwError "Wrong user agent"
+verifyUAgent _ _ _ Nothing = do
+    liftIO $ errorM "verify" "Missing signature"
+    throwError "Missing signature"
+verifyUAgent WatchConf{secret = Just secret'} payload userAgent (Just signature) = do
+    unless ("GitHub-Hookshot/" `isPrefixOf` userAgent) $ do
+        liftIO $ errorM "verify" $ "Weird user agent " ++ BS.unpack userAgent 
+        throwError "Wrong user agent"
+    unless (sig == show computed) $ do
+        liftIO $ errorM "verify" "Digests do not match"
+        throwError "Digests do not match"
   where
+    sig = fromMaybe sig $ stripPrefix "sha1=" signature
     computed = hmacGetDigest $ hmac (BS.pack secret') payload :: Digest SHA1
 
 
@@ -243,24 +243,39 @@ gitRefresh url targetDir = do
 
 makeInclude :: Include -> LBuilder ()
 makeInclude Include{includeRepository, includeDirectory} = do
+    abs <- liftIO $ makeAbsolute includeDirectory
+    liftIO $ debugM "worker" $ "Refreshing repository in " ++ abs
     gitRefresh includeRepository includeDirectory
+    liftIO $ debugM "worker" "Building project"
     buildProject includeDirectory
 
 
 buildProject :: FilePath -> LBuilder ()
 buildProject directory = do
     raw <- readFile $ directory </> buildConfigName
-    buildConf <- either (throwError . ("Unreadable build configuration: " ++)) return $ eitherDecode raw
+    BuildConf{includes, builds} <- either (throwError . ("Unreadable build configuration: " ++)) return $ eitherDecode raw
 
-    let relativeIncludes = map (\i -> i {includeDirectory = directory </> includeDirectory i}) (includes buildConf)
+    let relativeIncludes = map (\i -> i {includeDirectory = directory </> includeDirectory i}) includes
+    
+    liftIO $ debugM "worker" $ "Found " ++ show (length relativeIncludes) ++ " includes"
 
     runBuildersAndWait $ map makeInclude relativeIncludes
 
-    let relativeBuilds = map (relativize . snd) $ fromList $ mapToList (builds buildConf)
+    let relativeBuilds = map (relativize . snd) $ fromList $ mapToList builds
           where relativize build = build { sourceDir = directory </> sourceDir build
                                          , targetDir = directory </> targetDir build }
 
-    traverse buildAll relativeBuilds >>= waitForBuilders . join
+    liftIO $ debugM "worker" $ "Found " ++ show (length relativeBuilds) ++ " builds"
+    liftIO $ debugM "worker" $ "Found " ++ show (length (relativeBuilds >>= files)) ++ " files"
+
+    started <- traverse buildAll relativeBuilds 
+    
+    liftIO $ debugM "worker" "Builds started"
+
+    waitForBuilders $ join started
+
+    liftIO $ debugM "worker" "Builds finished"
+
     return ()
 
 
@@ -283,6 +298,7 @@ handleEvent WatchConf{watched, reposDirectory} = handle
                             return ()
                         Just Watch{directory} -> do
                             wd <- liftIO getCurrentDirectory
+                            liftIO $ debugM "worker" $ "Found watch targeting directory " ++ directory
                             makeInclude Include
                                 { includeDirectory = wd </> fromMaybe "." reposDirectory </> directory
                                 , includeRepository = repoToUrl pushRepository
@@ -298,10 +314,11 @@ handleCommon :: MonadIO m
              -> B.ByteString -- ^ Request body
              -> ByteString -- ^ User Agent string
              -> ByteString -- ^ Event type
-             -> Maybe ByteString -- ^ Signature
+             -> Maybe String -- ^ Signature
              -> ExceptT B.ByteString m B.ByteString
 handleCommon logLocation watchConf body userAgent eventHeader signature = do
     verifyUAgent watchConf (toStrict body) userAgent signature
+    liftIO $ debugM "receiver" "Verification successful"
     let ev = case eventHeader of
                 "push" -> PushEvent <$> eitherDecode body
                 "ping" -> PingEvent <$> eitherDecode body
@@ -325,6 +342,7 @@ handleCommon logLocation watchConf body userAgent eventHeader signature = do
                     liftIO $ writeFile filePath $ encode hook
                     return $ "Ping received. Data saved in " ++ B.pack filePath
         Right event -> do
+            liftIO $ debugM "receiver" "Event parsed, starting execution"
             void $ liftIO $ async $ handleEvent watchConf event
             return $ "Hook received. For build results refer to the log at " ++ bsLogLoc
   where
