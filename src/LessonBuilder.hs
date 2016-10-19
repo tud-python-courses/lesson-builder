@@ -13,7 +13,6 @@ import           Control.Concurrent.Async
 import           Control.Monad.Except       (ExceptT (..), MonadError,
                                              runExceptT, throwError)
 import           Crypto.Hash
-import           Crypto.Hash.Algorithms
 import           Crypto.MAC.HMAC
 import           Data.Aeson
 import           Data.Aeson.TH
@@ -22,7 +21,6 @@ import qualified Data.ByteString.Char8      as BS
 import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.Foldable              as F
 import           Data.Vector                (Vector)
-import           GHC.Generics
 import           System.Directory
 import           System.Exit
 import           System.FilePath
@@ -148,6 +146,7 @@ instance FromJSON Repo where
             <$> o .: "full_name"
             <*> o .: "id"
             <*> o .: "url"
+    parseJSON _ = mzero
 
 instance ToJSON Repo where
     toJSON Repo{repoName, repoId, apiUrl} = object ["full_name".=repoName, "id".=repoId, "url".=apiUrl]
@@ -197,16 +196,16 @@ outputToDirectory Build{command=Hevea, targetDir} file = ["-o", targetDir </> fi
 outputToDirectory Build{targetDir} _ = ["-output-directory", targetDir]
 
 
-buildIt :: Build -> String -> LBuilder ()
-buildIt b@Build{command, targetDir, sourceDir} file = do
-    liftIO $ debugM "worker" $ "Checking target directory " ++ targetDir 
-    ensureTargetDir targetDir
+buildIt :: FilePath -> Build -> String -> LBuilder ()
+buildIt wd b@Build{command, targetDir, sourceDir} file = do
     liftIO $ debugM "worker" $ printf "Executing %s in %s to %s" (show command) sourceDir targetDir
+    absTargetDir <- liftIO $ makeAbsolute targetDir
+    let process = (proc commandStr (outputToDirectory b { targetDir = absTargetDir } file ++ fromMaybe [] (lookup command additionalCommandOptions) ++ [file])) { cwd = Just $ wd </> sourceDir }
     shellBuildWithRepeat command process repeats
   where
     commandStr = toLower $ show command
     repeats = 2
-    process = (proc commandStr (file: outputToDirectory b file ++ fromMaybe [] (lookup command additionalCommandOptions))) { cwd = Just sourceDir }
+    
 
 
 asyncBuilder :: LBuilder a -> LBuilder (Async (Either String a))
@@ -217,8 +216,11 @@ waitBuilder :: Async (Either String a) -> LBuilder a
 waitBuilder = ExceptT . wait
 
 
-buildAll :: Build -> LBuilder (Vector (Async (Either String ())))
-buildAll b = mapM (asyncBuilder . buildIt b) (files b)
+buildAll :: FilePath -> Build -> LBuilder (Vector (Async (Either String ())))
+buildAll wd b@Build{targetDir} = do
+    liftIO $ debugM "worker" $ "Checking target directory " ++ targetDir 
+    ensureTargetDir (wd </> targetDir) 
+    mapM (asyncBuilder . buildIt wd b) (files b)
 
 
 waitForBuilders :: Foldable f => f (Async (Either String ())) -> LBuilder ()
@@ -256,7 +258,7 @@ gitRefresh url targetDir = do
     (code, stdout, stderr) <- liftIO $ readCreateProcessWithExitCode process ""
     case code of
         ExitSuccess -> return ()
-        ExitFailure c -> throwError $ "Git process failed with" ++ stdout ++ "\n" ++ stderr
+        ExitFailure _ -> throwError $ "Git process failed with" ++ stdout ++ "\n" ++ stderr
 
 
 makeInclude :: Include -> LBuilder ()
@@ -279,14 +281,12 @@ buildProject directory = do
 
     runBuildersAndWait $ map makeInclude relativeIncludes
 
-    let relativeBuilds = map (relativize . snd) $ fromList $ mapToList builds
-          where relativize build = build { sourceDir = directory </> sourceDir build
-                                         , targetDir = directory </> targetDir build }
+    let relativeBuilds = map snd $ fromList $ mapToList builds
 
     liftIO $ debugM "worker" $ "Found " ++ show (length relativeBuilds) ++ " builds"
     liftIO $ debugM "worker" $ "Found " ++ show (length (relativeBuilds >>= files)) ++ " files"
 
-    started <- traverse buildAll relativeBuilds 
+    started <- traverse (buildAll directory) relativeBuilds 
     
     liftIO $ debugM "worker" "Builds started"
 
@@ -361,6 +361,7 @@ handleCommon logLocation watchConf body userAgent eventHeader signature = do
                     liftIO $ errorM "receiver" "Hook config location is directory"
                     throwError $ "Ping error. For error details refer top the log at " ++ bsLogLoc
                 else do
+                    when exists $ infoM "receiver" "Identically named hook config present, overwriting"
                     liftIO $ writeFile filePath $ encode hook
                     return $ "Ping received. Data saved in " ++ B.pack filePath
         Right event -> do

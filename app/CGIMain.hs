@@ -48,7 +48,7 @@ main = do
                 userAgent <- B.pack . fromMaybe (error "No user agent") <$> getVar "HTTP_USER_AGENT"
                 eventHeader <- B.pack . fromMaybe (error "No event header") <$> getVar "HTTP_X_GITHUB_EVENT"
                 signature <- getVar "HTTP_SIGNATURE"
-                res <- liftIO $ runExceptT $ handleCommon logLocation conf body userAgent eventHeader signature
+                res <- liftIO $ runExceptT $ handleCommon absLogLoc conf body userAgent eventHeader signature
                 case res of
                     Left err -> outputError 400 "Invalid Request" $ return $ BL.unpack err
                     Right v -> outputFPS v

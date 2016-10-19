@@ -3,8 +3,6 @@ module Common where
 
 
 import           ClassyPrelude
-import           Data.Aeson
-import           LessonBuilder
 import           Options.Applicative
 
 
