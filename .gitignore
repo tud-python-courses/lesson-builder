@@ -66,3 +66,4 @@ cgi-bin/
 /.vscode/
 /.data/
 /test/req.json
+.DS_Store
