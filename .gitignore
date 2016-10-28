@@ -64,3 +64,5 @@ build_conf.json
 cgi-bin/
 /.stack-work/
 /.vscode/
+/.data/
+/test/req.json
