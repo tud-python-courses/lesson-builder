@@ -45,7 +45,7 @@ readWatchConf watchConfLoc = do
 
 app :: FilePath -> FilePath -> Application
 app logLocation confLocation request respond = do
-    infoM "server" "received request, changed"
+    infoM "server" "received request"
     body <- lazyRequestBody request
     res <- runExceptT $ do
         watchConf <- readWatchConf confLocation

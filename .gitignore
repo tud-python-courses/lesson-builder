@@ -63,3 +63,4 @@ watch_conf.json
 build_conf.json
 cgi-bin/
 /.stack-work/
+/.vscode/

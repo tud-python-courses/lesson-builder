@@ -54,15 +54,15 @@ skipStrings = ["[skip build]", "[build skip]"]
 
 
 additionalCommandOptions :: HashMap Command [String]
-additionalCommandOptions = mapFromList
-    [ (HtLatex, ["-halt-on-error", "-interaction=nonstopmode"])
+additionalCommandOptions =
+    [ (HtLatex , ["-halt-on-error", "-interaction=nonstopmode"])
     , (Pdflatex, ["-halt-on-error", "-interaction=nonstopmode"])
     ]
 
 
 texOutExt :: HashMap Command String
-texOutExt = mapFromList
-    [ (HtLatex,  "html")
+texOutExt = 
+    [ (HtLatex, "html")
     , (Pdflatex, "pdf")
     , (Xelatex, "pdf")
     , (Hevea, "html")
@@ -79,7 +79,7 @@ data Command
 
 
 instance ToJSON Command where
-    toJSON = String . toLower . pack . show  
+    toJSON = String . toLower . pack . show
 
 
 instance FromJSON Command where
@@ -155,12 +155,12 @@ instance ToJSON Repo where
 let dropPrefix p t = fromMaybe t $ stripPrefix p t
     prefixOpts prefix = defaultOptions { fieldLabelModifier = camelTo2 '_' . dropPrefix prefix } in
     join <$> sequence
-        [ deriveJSON (prefixOpts "commit") ''CommitData
+        [ deriveJSON (prefixOpts "commit" ) ''CommitData
         , deriveJSON (prefixOpts "include") ''Include
-        , deriveJSON (prefixOpts "build") ''Build
-        , deriveJSON (prefixOpts "ping") ''Ping
-        , deriveJSON (prefixOpts "push") ''Push
-        , deriveJSON (prefixOpts "watch") ''Watch
+        , deriveJSON (prefixOpts "build"  ) ''Build
+        , deriveJSON (prefixOpts "ping"   ) ''Ping
+        , deriveJSON (prefixOpts "push"   ) ''Push
+        , deriveJSON (prefixOpts "watch"  ) ''Watch
         , deriveJSON defaultOptions { fieldLabelModifier = camelTo2 '_' } ''WatchConf
         ]
 
@@ -253,8 +253,8 @@ gitRefresh :: String -> FilePath -> LBuilder ()
 gitRefresh url targetDir = do
     exists <- liftIO $ doesDirectoryExist targetDir
     let process = if exists
-                  then proc "git" ["-C", targetDir, "pull"]
-                  else proc "git" ["clone", url, targetDir]
+                    then proc "git" ["-C", targetDir, "pull"]
+                    else proc "git" ["clone", url, targetDir]
     (code, stdout, stderr) <- liftIO $ readCreateProcessWithExitCode process ""
     case code of
         ExitSuccess -> return ()
@@ -307,25 +307,25 @@ handleEvent WatchConf{watched, reposDirectory} = handle
   where
     handle (PingEvent Ping{}) = errorM "worker" "Ping event should not be handeled in worker"
     handle (PushEvent Push{pushRepository, pushHeadCommit}) = do
-        res <- catch (runExceptT $
-                    -- TODO handle special events (push to own repo)
-                    case lookup (repoName pushRepository) watchMap of
-                        Nothing -> throwError "Unrecognized repository"
-                        _ | any (`isInfixOf` commitMessage pushHeadCommit) skipStrings -> do
-                            liftIO $ infoM "worker" "skipping commit due to skip message"
-                            return ()
-                        Just Watch{directory} -> do
-                            wd <- liftIO getCurrentDirectory
-                            liftIO $ debugM "worker" $ "Found watch targeting directory " ++ directory
-                            makeInclude Include
-                                { includeDirectory = wd </> fromMaybe "." reposDirectory </> directory
-                                , includeRepository = repoToUrl pushRepository
-                                }
-                )
-                onExcept
+        res <- flip catch onExcept $ runExceptT $
+            -- TODO handle special events (push to own repo)
+            case lookup (repoName pushRepository) watchMap of
+                Nothing -> throwError "Unrecognized repository"
+                _ | any (`isInfixOf` commitMessage pushHeadCommit) skipStrings -> do
+                    liftIO $ infoM "worker" "skipping commit due to skip message"
+                    return ()
+                Just Watch{directory} -> do
+                    wd <- liftIO getCurrentDirectory
+                    liftIO $ debugM "worker" $ "Found watch targeting directory " ++ directory
+                    makeInclude Include
+                        { includeDirectory = wd </> fromMaybe "." reposDirectory </> directory
+                        , includeRepository = repoToUrl pushRepository
+                        }
 
         either (errorM "worker") return res
-    watchMap = mapFromList $ map (watchName &&& id) $ toList watched :: HashMap String Watch
+    
+    watchMap :: HashMap String Watch
+    watchMap = mapFromList $ map (watchName &&& id) $ toList watched
     onExcept :: SomeException -> IO (Either String a) 
     onExcept = return . Left . show
 
@@ -361,7 +361,7 @@ handleCommon logLocation watchConf body userAgent eventHeader signature = do
                     liftIO $ errorM "receiver" "Hook config location is directory"
                     throwError $ "Ping error. For error details refer top the log at " ++ bsLogLoc
                 else do
-                    when exists $ infoM "receiver" "Identically named hook config present, overwriting"
+                    when exists $ liftIO $ infoM "receiver" "Identically named hook config present, overwriting"
                     liftIO $ writeFile filePath $ encode hook
                     return $ "Ping received. Data saved in " ++ B.pack filePath
         Right event -> do
