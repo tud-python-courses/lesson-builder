@@ -7,7 +7,6 @@ module Main where
 import           ClassyPrelude
 import           Common
 import           Control.Monad.Except
-import           Data.Aeson
 import           LessonBuilder
 import           Network.HTTP.Types
 import           Network.Wai
@@ -37,27 +36,21 @@ prepareLogger targetFile = do
                                 }
 
 
-readWatchConf :: (MonadIO m, MonadError BL.ByteString m) => FilePath -> m WatchConf 
-readWatchConf watchConfLoc = do
-    raw <- readFile watchConfLoc
-    either (throwError . BL.pack) return $ eitherDecode raw
-
-
 app :: FilePath -> FilePath -> Application
 app logLocation confLocation request respond = do
     infoM "server" "received request"
     body <- lazyRequestBody request
     res <- runExceptT $ do
-        watchConf <- readWatchConf confLocation
+        watchConf <- withExceptT BL.pack $ ExceptT $ readConf confLocation
         eventHeader <- getHeader "X-GitHub-Event"
         userAgent <- maybe (throwError "No user agent found") return $ requestHeaderUserAgent request
         handleCommon logLocation watchConf body userAgent eventHeader (B.unpack <$> signature)
     case res of
         Left err -> do
-            liftIO $ infoM "server" "Responding error" 
+            liftIO $ infoM "server" "Responding error"
             respond $ responseLBS badRequest400 [] err
         Right v -> do
-            liftIO $ infoM "server" "Responding okay" 
+            liftIO $ infoM "server" "Responding okay"
             respond $ responseLBS ok200 [] v
   where
     signature = lookup "X-Hub-Signature" $ requestHeaders request
@@ -66,8 +59,8 @@ app logLocation confLocation request respond = do
 main :: IO ()
 main = do
     Opts{..} <- execParser optsParser
-    raw <- readFile watchConf
-    case eitherDecode raw of
+    raw <- readConf watchConf
+    case raw of
         Left err -> putStrLn (pack err)
         Right conf -> do
             prepareLogger logLocation

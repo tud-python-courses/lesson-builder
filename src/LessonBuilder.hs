@@ -14,7 +14,7 @@ import           Control.Monad.Except       (ExceptT (..), MonadError,
                                              runExceptT, throwError)
 import           Crypto.Hash
 import           Crypto.MAC.HMAC
-import           Data.Aeson
+import           Data.Aeson as Aeson
 import           Data.Aeson.TH
 import           Data.Aeson.Types
 import qualified Data.ByteString.Char8      as BS
@@ -27,6 +27,7 @@ import           System.FilePath
 import           System.Log.Logger
 import           System.Process
 import           Text.Printf
+import qualified Data.Yaml as Yaml
 
 
 data Include = Include
@@ -61,7 +62,7 @@ additionalCommandOptions =
 
 
 texOutExt :: HashMap Command String
-texOutExt = 
+texOutExt =
     [ (HtLatex, "html")
     , (Pdflatex, "pdf")
     , (Xelatex, "pdf")
@@ -88,7 +89,7 @@ instance FromJSON Command where
     parseJSON (String "hevea") = return Hevea
     parseJSON (String "xelatex") = return Xelatex
     parseJSON (String "latexmk") = return Latexmk
-    parseJSON _ = mzero 
+    parseJSON _ = mzero
 
 
 data Build = Build
@@ -205,7 +206,7 @@ buildIt wd b@Build{command, targetDir, sourceDir} file = do
   where
     commandStr = toLower $ show command
     repeats = 2
-    
+
 
 
 asyncBuilder :: LBuilder a -> LBuilder (Async (Either String a))
@@ -218,8 +219,8 @@ waitBuilder = ExceptT . wait
 
 buildAll :: FilePath -> Build -> LBuilder (Vector (Async (Either String ())))
 buildAll wd b@Build{targetDir} = do
-    liftIO $ debugM "worker" $ "Checking target directory " ++ targetDir 
-    ensureTargetDir (wd </> targetDir) 
+    liftIO $ debugM "worker" $ "Checking target directory " ++ targetDir
+    ensureTargetDir (wd </> targetDir)
     mapM (asyncBuilder . buildIt wd b) (files b)
 
 
@@ -239,7 +240,7 @@ verifyUAgent _ _ _ Nothing = do
     throwError "Missing signature"
 verifyUAgent WatchConf{secret = Just secret'} payload userAgent (Just signature) = do
     unless ("GitHub-Hookshot/" `isPrefixOf` userAgent) $ do
-        liftIO $ errorM "verify" $ "Weird user agent " ++ BS.unpack userAgent 
+        liftIO $ errorM "verify" $ "Weird user agent " ++ BS.unpack userAgent
         throwError "Wrong user agent"
     unless (sig == show computed) $ do
         liftIO $ errorM "verify" "Digests do not match"
@@ -276,7 +277,7 @@ buildProject directory = do
     BuildConf{includes, builds} <- either (throwError . ("Unreadable build configuration: " ++)) return $ eitherDecode raw
 
     let relativeIncludes = map (\i -> i {includeDirectory = directory </> includeDirectory i}) includes
-    
+
     liftIO $ debugM "worker" $ "Found " ++ show (length relativeIncludes) ++ " includes"
 
     runBuildersAndWait $ map makeInclude relativeIncludes
@@ -286,8 +287,8 @@ buildProject directory = do
     liftIO $ debugM "worker" $ "Found " ++ show (length relativeBuilds) ++ " builds"
     liftIO $ debugM "worker" $ "Found " ++ show (length (relativeBuilds >>= files)) ++ " files"
 
-    started <- traverse (buildAll directory) relativeBuilds 
-    
+    started <- traverse (buildAll directory) relativeBuilds
+
     liftIO $ debugM "worker" "Builds started"
 
     waitForBuilders $ join started
@@ -323,11 +324,21 @@ handleEvent WatchConf{watched, reposDirectory} = handle
                         }
 
         either (errorM "worker") return res
-    
+
     watchMap :: HashMap String Watch
     watchMap = mapFromList $ map (watchName &&& id) $ toList watched
-    onExcept :: SomeException -> IO (Either String a) 
+    onExcept :: SomeException -> IO (Either String a)
     onExcept = return . Left . show
+
+
+readConf :: MonadIO m => FilePath -> m (Either String WatchConf)
+readConf fp = reader <$> liftIO (readFile fp)
+  where
+    reader
+        | takeExtension fp `elem` ([".yaml", ".yml"] :: [String]) = Aeson.eitherDecode
+        | takeExtension fp == ".json" = Yaml.decodeEither . toStrict
+        | otherwise = const $ Left "Unknown Extension"
+
 
 
 handleCommon :: MonadIO m

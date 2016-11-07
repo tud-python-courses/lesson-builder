@@ -4,7 +4,6 @@ module Main where
 import           ClassyPrelude
 import           Common
 import           Control.Monad.Except
-import           Data.Aeson
 import qualified Data.ByteString.Char8      as B
 import qualified Data.ByteString.Lazy.Char8 as BL
 import           LessonBuilder
@@ -36,8 +35,8 @@ main :: IO ()
 main = do
     Opts{..} <- execParser optsParser
     runCGI $ handleErrors $ do
-        raw <- liftIO $ readFile watchConf
-        case eitherDecode raw of
+        raw <- readConf watchConf
+        case raw of
             Left err -> error err
             Right conf -> do
                 liftIO $ prepareLogger logLocation
