@@ -1,3 +1,4 @@
+#!/usr/local/bin/runhaskell
 {-# LANGUAGE OverloadedStrings #-}
 
 import Network.HTTP.Client
@@ -6,17 +7,19 @@ import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Char8 as BS
 import Data.Aeson
 import Data.Maybe (fromMaybe)
+import System.Environment
 
 
 main :: IO ()
 main = do
+    [url] <- getArgs
     manager <- newManager defaultManagerSettings
     file <- B.readFile "req.json"
 
     let minified = encode (fromMaybe (error "json parsing failed") (decode file) :: Value) 
 
     -- Create the request
-    initialRequest <- parseRequest "http://localhost:14900"
+    initialRequest <- parseRequest $ "http://" ++ url
     let request = initialRequest { method = "POST"
                                  , requestBody = RequestBodyLBS minified
                                  , requestHeaders = requestHeaders initialRequest 
