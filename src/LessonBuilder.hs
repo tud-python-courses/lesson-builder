@@ -28,6 +28,7 @@ import           System.Log.Logger
 import           System.Process
 import           Text.Printf
 import qualified Data.Yaml as Yaml
+import qualified System.Posix.Process as Proc
 
 
 data Include = Include
@@ -258,8 +259,10 @@ gitRefresh url targetDir = do
                     else proc "git" ["clone", url, targetDir]
     (code, stdout, stderr) <- liftIO $ readCreateProcessWithExitCode process ""
     case code of
-        ExitSuccess -> return ()
-        ExitFailure _ -> throwError $ "Git process failed with" ++ stdout ++ "\n" ++ stderr
+        ExitSuccess -> liftIO $ debugM "worker" ("git " ++ (if exists then "pull" else "clone") ++ " succeeded")
+        ExitFailure _ -> do
+            liftIO $ debugM "worker" "git failed" 
+            throwError $ "Git process failed with" ++ stdout ++ "\n" ++ stderr
 
 
 makeInclude :: Include -> LBuilder ()
@@ -377,7 +380,11 @@ handleCommon logLocation watchConf body userAgent eventHeader signature = do
                     return $ "Ping received. Data saved in " ++ B.pack filePath
         Right event -> do
             liftIO $ debugM "receiver" "Event parsed, starting execution"
-            void $ liftIO $ async $ handleEvent watchConf event
+            void $ liftIO $ Proc.forkProcess $ do
+                Proc.createSession
+                id <- Proc.getParentProcessID
+                debugM "builder" (show id)
+                handleEvent watchConf event
             return $ "Hook received. For build results refer to the log at " ++ bsLogLoc
   where
     directory = fromMaybe defaultDataDirectory $ dataDirectory watchConf
