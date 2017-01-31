@@ -8,28 +8,28 @@
 module LessonBuilder where
 
 
-import           ClassyPrelude              hiding (async)
+import           ClassyPrelude                   hiding (async)
 import           Control.Concurrent.Async.Lifted
-import           Control.Monad.Except       (ExceptT (..), MonadError,
-                                             runExceptT, throwError)
+import           Control.Monad.Except            (ExceptT (..), MonadError,
+                                                  runExceptT, throwError)
+import           Control.Monad.Logger
 import           Crypto.Hash
 import           Crypto.MAC.HMAC
-import           Data.Aeson as Aeson
+import           Data.Aeson                      as Aeson
 import           Data.Aeson.TH
 import           Data.Aeson.Types
-import qualified Data.ByteString.Char8      as BS
-import qualified Data.ByteString.Lazy.Char8 as B
-import qualified Data.Foldable              as F
-import           Data.Vector                (Vector)
+import qualified Data.ByteString.Char8           as BS
+import qualified Data.ByteString.Lazy.Char8      as B
+import qualified Data.Foldable                   as F
+import           Data.Vector                     (Vector)
+import qualified Data.Yaml                       as Yaml
+import           Marvin.Interpolate.All
 import           System.Directory
 import           System.Exit
 import           System.FilePath
-import Control.Monad.Logger
+import qualified System.Posix.Process            as Proc
 import           System.Process
 import           Text.Printf
-import qualified Data.Yaml as Yaml
-import qualified System.Posix.Process as Proc
-import Marvin.Interpolate.All
 
 
 data Include = Include
@@ -258,7 +258,7 @@ gitRefresh url targetDir = do
     case code of
         ExitSuccess -> logDebugNS "worker" $(isT "git #{if exists then \"pull\" :: Text else \"clone\"} succeeded")
         ExitFailure _ -> do
-            logDebugNS "worker" "git failed" 
+            logDebugNS "worker" "git failed"
             throwError $(isT "Git process failed with \n#{stdout}\n#{stderr}")
 
 

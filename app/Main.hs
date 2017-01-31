@@ -1,21 +1,21 @@
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE FlexibleContexts #-}
 module Main where
 
 import           ClassyPrelude
 import           Common
 import           Control.Monad.Except
+import           Control.Monad.Logger
+import qualified Data.ByteString.Char8      as B
+import qualified Data.ByteString.Lazy.Char8 as BL
 import           LessonBuilder
 import           Network.HTTP.Types
 import           Network.Wai
 import           Network.Wai.Handler.Warp
 import           Options.Applicative
 import           System.Directory
-import Control.Monad.Logger
-import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy.Char8 as BL
 
 
 
