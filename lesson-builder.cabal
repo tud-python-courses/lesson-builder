@@ -28,8 +28,8 @@ library
                      , aeson
                      , classy-prelude
                      , process
-                     , async
-                     , hslogger
+                     , lifted-async
+                     , monad-logger
                      , network-uri
                      , cryptonite
                      , http-types
@@ -39,6 +39,7 @@ library
                      , vector
                      , yaml
                      , unix
+                     , marvin-interpolate > 0.4
   hs-source-dirs:      src
   default-language:    Haskell2010
   default-extensions:  MultiParamTypeClasses
@@ -54,7 +55,7 @@ executable lesson-builder-server
   build-depends:       base <5
                      , lesson-builder
                      , classy-prelude
-                     , hslogger
+                     , monad-logger
                      , wai
                      , optparse-applicative
                      , warp
@@ -78,7 +79,7 @@ executable lesson-builder-cgi
   build-depends:       base <5
                      , lesson-builder
                      , classy-prelude
-                     , hslogger
+                     , monad-logger
                      , optparse-applicative
                      , aeson
                      , cgi

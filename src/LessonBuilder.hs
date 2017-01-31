@@ -9,7 +9,7 @@ module LessonBuilder where
 
 
 import           ClassyPrelude              hiding (async)
-import           Control.Concurrent.Async
+import           Control.Concurrent.Async.Lifted
 import           Control.Monad.Except       (ExceptT (..), MonadError,
                                              runExceptT, throwError)
 import           Crypto.Hash
@@ -24,11 +24,12 @@ import           Data.Vector                (Vector)
 import           System.Directory
 import           System.Exit
 import           System.FilePath
-import           System.Log.Logger
+import Control.Monad.Logger
 import           System.Process
 import           Text.Printf
 import qualified Data.Yaml as Yaml
 import qualified System.Posix.Process as Proc
+import Marvin.Interpolate.All
 
 
 data Include = Include
@@ -174,7 +175,12 @@ instance FromJSON BuildConf where
     parseJSON _ = mzero
 
 
-type LBuilder = ExceptT String IO
+type LBuilder = ExceptT Text (LoggingT IO)
+
+
+mapLeft :: (a -> c) -> Either a b -> Either c b
+mapLeft f (Left err) = Left $ f err
+mapLeft _ (Right v) = Right v
 
 
 ensureTargetDir :: FilePath -> LBuilder ()
@@ -185,11 +191,11 @@ shellBuildWithRepeat :: Command -> CreateProcess -> Int -> LBuilder ()
 shellBuildWithRepeat command process repeats = do
     res <- lastMay <$> (replicateM repeats (liftIO $ readCreateProcessWithExitCode process "") :: LBuilder [(ExitCode, String, String)])
     case res of
-        Nothing -> throwError $ printf "Unexpected number of repeats: %d" repeats
-        Just (ExitSuccess, _, _) -> liftIO $ debugM "build" $ "Successfully executed " ++ show command
+        Nothing -> throwError $(isT "Unexpected number of repeats: #{repeats}")
+        Just (ExitSuccess, _, _) -> logDebugNS "build" $(isT "Successfully executed #{command}")
         Just (ExitFailure i, _, _) -> do
-            let str = printf "Build failed with %d for command %s (%d repeats)" i (show command) repeats
-            liftIO $ errorM "worker" str
+            let str = $(isT "Build failed with #{i} for command #{command} (#{repeats} repeats)")
+            logErrorNS "worker" str
             throwError str
 
 
@@ -200,7 +206,7 @@ outputToDirectory Build{targetDir} _ = ["-output-directory", targetDir]
 
 buildIt :: FilePath -> Build -> String -> LBuilder ()
 buildIt wd b@Build{command, targetDir, sourceDir} file = do
-    liftIO $ debugM "worker" $ printf "Executing %s in %s to %s" (show command) sourceDir targetDir
+    logDebugNS "worker" $(isT "Executing #{command} in #{sourceDir} to #{targetDir}")
     absTargetDir <- liftIO $ makeAbsolute targetDir
     let process = (proc commandStr (outputToDirectory b { targetDir = absTargetDir } file ++ fromMaybe [] (lookup command additionalCommandOptions) ++ [file])) { cwd = Just $ wd </> sourceDir }
     shellBuildWithRepeat command process repeats
@@ -209,42 +215,33 @@ buildIt wd b@Build{command, targetDir, sourceDir} file = do
     repeats = 2
 
 
-
-asyncBuilder :: LBuilder a -> LBuilder (Async (Either String a))
-asyncBuilder = liftIO . async . runExceptT
-
-
-waitBuilder :: Async (Either String a) -> LBuilder a
-waitBuilder = ExceptT . wait
-
-
-buildAll :: FilePath -> Build -> LBuilder (Vector (Async (Either String ())))
+buildAll :: FilePath -> Build -> LBuilder (Vector (Async (Either Text ())))
 buildAll wd b@Build{targetDir} = do
-    liftIO $ debugM "worker" $ "Checking target directory " ++ targetDir
+    logDebugNS "worker" $(isT "Checking target directory #{targetDir}")
     ensureTargetDir (wd </> targetDir)
-    mapM (asyncBuilder . buildIt wd b) (files b)
+    mapM (async . buildIt wd b) (files b)
 
 
-waitForBuilders :: Foldable f => f (Async (Either String ())) -> LBuilder ()
-waitForBuilders = F.traverse_ waitBuilder
+waitForBuilders :: Foldable f => f (Async (Either Text ())) -> LBuilder ()
+waitForBuilders = F.traverse_ wait
 
 
 runBuildersAndWait :: Traversable f => f (LBuilder ()) -> LBuilder ()
-runBuildersAndWait = traverse asyncBuilder >=> waitForBuilders
+runBuildersAndWait = traverse async >=> waitForBuilders
 
 
-verifyUAgent :: (MonadIO m, MonadError B.ByteString m)
+verifyUAgent :: (MonadIO m, MonadError Text m, MonadLogger m)
              => WatchConf -> ByteString -> ByteString -> Maybe String -> m ()
 verifyUAgent WatchConf{secret = Nothing} _ _ _ = return ()
 verifyUAgent _ _ _ Nothing = do
-    liftIO $ errorM "verify" "Missing signature"
+    logErrorNS "verify" "Missing signature"
     throwError "Missing signature"
 verifyUAgent WatchConf{secret = Just secret'} payload userAgent (Just signature) = do
     unless ("GitHub-Hookshot/" `isPrefixOf` userAgent) $ do
-        liftIO $ errorM "verify" $ "Weird user agent " ++ BS.unpack userAgent
+        logErrorNS "verify" $ $(isT "Weird user agent #{BS.unpack userAgent}")
         throwError "Wrong user agent"
     unless (sig == show computed) $ do
-        liftIO $ errorM "verify" "Digests do not match"
+        logErrorNS "verify" "Digests do not match"
         throwError "Digests do not match"
   where
     sig = fromMaybe sig $ stripPrefix "sha1=" signature
@@ -259,44 +256,44 @@ gitRefresh url targetDir = do
                     else proc "git" ["clone", url, targetDir]
     (code, stdout, stderr) <- liftIO $ readCreateProcessWithExitCode process ""
     case code of
-        ExitSuccess -> liftIO $ debugM "worker" ("git " ++ (if exists then "pull" else "clone") ++ " succeeded")
+        ExitSuccess -> logDebugNS "worker" $(isT "git #{if exists then \"pull\" :: Text else \"clone\"} succeeded")
         ExitFailure _ -> do
-            liftIO $ debugM "worker" "git failed" 
-            throwError $ "Git process failed with" ++ stdout ++ "\n" ++ stderr
+            logDebugNS "worker" "git failed" 
+            throwError $(isT "Git process failed with \n#{stdout}\n#{stderr}")
 
 
 makeInclude :: Include -> LBuilder ()
 makeInclude Include{includeRepository, includeDirectory} = do
     abs <- liftIO $ makeAbsolute includeDirectory
-    liftIO $ debugM "worker" $ "Refreshing repository in " ++ abs
+    logDebugNS "worker" $(isT "Refreshing repository in #{abs}")
     gitRefresh includeRepository includeDirectory
-    liftIO $ debugM "worker" "Building project"
+    logDebugNS "worker" "Building project"
     buildProject includeDirectory
 
 
 buildProject :: FilePath -> LBuilder ()
 buildProject directory = do
     raw <- readFile $ directory </> buildConfigName
-    BuildConf{includes, builds} <- either (throwError . ("Unreadable build configuration: " ++)) return $ eitherDecode raw
+    BuildConf{includes, builds} <- either (\err -> throwError $(isT "Unreadable build configuration: #{err}")) return $ eitherDecode raw
 
     let relativeIncludes = map (\i -> i {includeDirectory = directory </> includeDirectory i}) includes
 
-    liftIO $ debugM "worker" $ "Found " ++ show (length relativeIncludes) ++ " includes"
+    logDebugNS "worker" $(isT "Found #{length relativeIncludes} includes")
 
     runBuildersAndWait $ map makeInclude relativeIncludes
 
     let relativeBuilds = map snd $ fromList $ mapToList builds
 
-    liftIO $ debugM "worker" $ "Found " ++ show (length relativeBuilds) ++ " builds"
-    liftIO $ debugM "worker" $ "Found " ++ show (length (relativeBuilds >>= files)) ++ " files"
+    logDebugNS "worker" $(isT "Found #{length relativeBuilds} builds")
+    logDebugNS "worker" $(isT "Found #{length (relativeBuilds >>= files)} files")
 
     started <- traverse (buildAll directory) relativeBuilds
 
-    liftIO $ debugM "worker" "Builds started"
+    logDebugNS "worker" "Builds started"
 
     waitForBuilders $ join started
 
-    liftIO $ debugM "worker" "Builds finished"
+    logDebugNS "worker" "Builds finished"
 
     return ()
 
@@ -306,36 +303,33 @@ repoToUrl :: Repo -> String
 repoToUrl Repo{repoName} = "https://github.com/" ++ repoName
 
 
-handleEvent :: WatchConf -> Event -> IO ()
+handleEvent :: WatchConf -> Event -> LBuilder ()
 handleEvent WatchConf{watched, reposDirectory} = handle
   where
-    handle (PingEvent Ping{}) = errorM "worker" "Ping event should not be handeled in worker"
-    handle (PushEvent Push{pushRepository, pushHeadCommit}) = do
-        res <- flip catch onExcept $ runExceptT $
+    handle (PingEvent Ping{}) = logErrorNS "worker" "Ping event should not be handeled in worker"
+    handle (PushEvent Push{pushRepository, pushHeadCommit}) =
+        flip catch onExcept $
             -- TODO handle special events (push to own repo)
             case lookup (repoName pushRepository) watchMap of
                 Nothing -> throwError "Unrecognized repository"
                 _ | any (`isInfixOf` commitMessage pushHeadCommit) skipStrings -> do
-                    liftIO $ infoM "worker" "skipping commit due to skip message"
+                    logInfoNS "worker" "skipping commit due to skip message"
                     return ()
                 Just Watch{directory} -> do
                     wd <- liftIO getCurrentDirectory
-                    liftIO $ debugM "worker" $ "Found watch targeting directory " ++ directory
+                    logDebugNS "worker" $(isT "Found watch targeting directory #{directory}")
                     makeInclude Include
                         { includeDirectory = wd </> fromMaybe "." reposDirectory </> directory
                         , includeRepository = repoToUrl pushRepository
                         }
 
-        either (errorM "worker") return res
-
     watchMap :: HashMap String Watch
     watchMap = mapFromList $ map (watchName &&& id) $ toList watched
-    onExcept :: SomeException -> IO (Either String a)
-    onExcept = return . Left . show
+    onExcept e = throwError $(isT "#{e :: SomeException}")
 
 
-readConf :: MonadIO m => FilePath -> m (Either String WatchConf)
-readConf fp = reader <$> liftIO (readFile fp)
+readConf :: MonadIO m => FilePath -> m (Either Text WatchConf)
+readConf fp = mapLeft pack . reader <$> liftIO (readFile fp)
   where
     reader
         | takeExtension fp `elem` ([".yaml", ".yml"] :: [String]) = Aeson.eitherDecode
@@ -344,49 +338,42 @@ readConf fp = reader <$> liftIO (readFile fp)
 
 
 
-handleCommon :: MonadIO m
-             => FilePath -- ^ The location of the log
-             -> WatchConf
+handleCommon ::WatchConf
              -> B.ByteString -- ^ Request body
              -> ByteString -- ^ User Agent string
              -> ByteString -- ^ Event type
              -> Maybe String -- ^ Signature
-             -> ExceptT B.ByteString m B.ByteString
-handleCommon logLocation watchConf body userAgent eventHeader signature = do
+             -> LBuilder Text
+handleCommon watchConf body userAgent eventHeader signature = do
     verifyUAgent watchConf (toStrict body) userAgent signature
-    liftIO $ debugM "receiver" "Verification successful"
+    logDebugNS "receiver" "Verification successful"
     let ev = case eventHeader of
                 "push" -> PushEvent <$> eitherDecode body
                 "ping" -> PingEvent <$> eitherDecode body
                 a -> Left $ "unknown event type " ++ BS.unpack a
     case ev of
         Left err -> do
-            liftIO $ errorM "receiver" "Unparseable json"
-            liftIO $ errorM "receiver" err
-            throwError $ "Unparseable json. For details on the error refer to the log at " ++ bsLogLoc
+            logErrorNS "receiver" "Unparseable json"
+            logErrorNS "receiver" $(isT "#{err}")
+            throwError $(isT "Unparseable json. For details on the error refer to the log.")
         Right (PingEvent Ping{hookId, hook}) -> do
-            liftIO $ infoM "receiver" "Ping received"
-            let fileName = printf "hook_%d.conf.json" hookId
+            logInfoNS "receiver" "Ping received"
+            let fileName = $(isS "hook_#{hookId}.conf.json")
                 filePath = directory </> fileName
             isDir <- liftIO $ doesDirectoryExist filePath
             exists <- liftIO $ doesFileExist filePath
             if isDir
                 then do
-                    liftIO $ errorM "receiver" "Hook config location is directory"
-                    throwError $ "Ping error. For error details refer top the log at " ++ bsLogLoc
+                    logErrorNS "receiver" "Hook config location is directory"
+                    throwError $(isT "Ping error. For error details refer top the log.")
                 else do
-                    when exists $ liftIO $ infoM "receiver" "Identically named hook config present, overwriting"
+                    when exists $ logInfoNS "receiver" "Identically named hook config present, overwriting"
                     liftIO $ writeFile filePath $ encode hook
-                    return $ "Ping received. Data saved in " ++ B.pack filePath
+                    return $(isT "Ping received. Data saved in #{filePath}")
         Right event -> do
-            liftIO $ debugM "receiver" "Event parsed, starting execution"
-            void $ liftIO $ Proc.forkProcess $ do
-                Proc.createSession
-                id <- Proc.getParentProcessID
-                debugM "builder" (show id)
-                handleEvent watchConf event
-            return $ "Hook received. For build results refer to the log at " ++ bsLogLoc
+            logDebugNS "receiver" "Event parsed, starting execution"
+            void $ async $ handleEvent watchConf event
+            return $(isT "Hook received. For build results refer to the log.")
   where
     directory = fromMaybe defaultDataDirectory $ dataDirectory watchConf
-    bsLogLoc = B.pack logLocation
 
