@@ -273,7 +273,7 @@ makeInclude Include{includeRepository, includeDirectory} = do
 
 buildProject :: FilePath -> LBuilder ()
 buildProject directory = do
-    raw <- readFile $ directory </> buildConfigName
+    raw <- liftIO $ B.readFile $ directory </> buildConfigName
     BuildConf{includes, builds} <- either (\err -> throwError $(isT "Unreadable build configuration: #{err}")) return $ eitherDecode raw
 
     let relativeIncludes = map (\i -> i {includeDirectory = directory </> includeDirectory i}) includes
@@ -329,7 +329,7 @@ handleEvent WatchConf{watched, reposDirectory} = handle
 
 
 readConf :: MonadIO m => FilePath -> m (Either Text WatchConf)
-readConf fp = mapLeft pack . reader <$> liftIO (readFile fp)
+readConf fp = mapLeft pack . reader <$> liftIO (B.readFile fp)
   where
     reader
         | takeExtension fp `elem` ([".yaml", ".yml"] :: [String]) = Aeson.eitherDecode
@@ -338,12 +338,12 @@ readConf fp = mapLeft pack . reader <$> liftIO (readFile fp)
 
 
 
-handleCommon ::WatchConf
+handleCommon :: WatchConf
              -> B.ByteString -- ^ Request body
              -> ByteString -- ^ User Agent string
              -> ByteString -- ^ Event type
              -> Maybe String -- ^ Signature
-             -> LBuilder Text
+             -> LBuilder (Text, LBuilder ())
 handleCommon watchConf body userAgent eventHeader signature = do
     verifyUAgent watchConf (toStrict body) userAgent signature
     logDebugNS "receiver" "Verification successful"
@@ -368,12 +368,11 @@ handleCommon watchConf body userAgent eventHeader signature = do
                     throwError $(isT "Ping error. For error details refer top the log.")
                 else do
                     when exists $ logInfoNS "receiver" "Identically named hook config present, overwriting"
-                    liftIO $ writeFile filePath $ encode hook
-                    return $(isT "Ping received. Data saved in #{filePath}")
+                    return ($(isT "Ping received. Data saved in #{filePath}")
+                           , liftIO $ B.writeFile filePath $ encode hook)
         Right event -> do
             logDebugNS "receiver" "Event parsed, starting execution"
-            void $ async $ handleEvent watchConf event
-            return $(isT "Hook received. For build results refer to the log.")
+            return ($(isT "Hook received. For build results refer to the log."), handleEvent watchConf event)
   where
     directory = fromMaybe defaultDataDirectory $ dataDirectory watchConf
 

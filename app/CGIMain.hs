@@ -11,6 +11,7 @@ import           LessonBuilder
 import           Network.CGI
 import           Options.Applicative
 import           System.Directory
+import System.Posix.Daemonize
 
 
 main :: IO ()
@@ -34,5 +35,10 @@ main = do
                         res <- liftIO $ runStderrLoggingT $ runExceptT $ handleCommon conf body userAgent eventHeader signature
                         case res of
                             Left err -> outputError 400 "Invalid Request" $ return $ unpack err
-                            Right v -> outputFPS $ encodeUtf8 $ fromStrict v
+                            Right (msg, action) -> do 
+                                
+                                liftIO $ daemonize $ runStderrLoggingT $ do 
+                                    runExceptT action >>= either logErrorN return
+                                    logErrorN "Finished"
+                                outputFPS $ encodeUtf8 $ fromStrict msg
             _ -> outputMethodNotAllowed ["GET", "POST"]

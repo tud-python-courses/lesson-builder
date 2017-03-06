@@ -32,9 +32,11 @@ app logLocation confLocation request respond = runStderrLoggingT $ do
         Left err -> do
             logInfoNS "server" "Responding error"
             liftIO $ respond $ responseLBS badRequest400 [] (encodeUtf8 $ fromStrict err)
-        Right v -> do
+        Right (msg, action) -> do
             logInfoNS "server" "Responding okay"
-            liftIO $ respond $ responseLBS ok200 [] (encodeUtf8 $ fromStrict v)
+            void $ async $
+                runExceptT action >>= either logErrorN return
+            liftIO $ respond $ responseLBS ok200 [] (encodeUtf8 $ fromStrict msg)
   where
     signature = lookup "X-Hub-Signature" $ requestHeaders request
     getHeader h = maybe (throwError "Missing header") return $ lookup h $ requestHeaders request
