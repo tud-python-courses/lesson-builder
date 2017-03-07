@@ -86,12 +86,13 @@ instance ToJSON Command where
 
 
 instance FromJSON Command where
-    parseJSON (String "htlatex") = return HtLatex
-    parseJSON (String "pdflatex") = return Pdflatex
-    parseJSON (String "hevea") = return Hevea
-    parseJSON (String "xelatex") = return Xelatex
-    parseJSON (String "latexmk") = return Latexmk
-    parseJSON _ = mzero
+    parseJSON = withText "expected string" $ \case
+        "htlatex" -> return HtLatex
+        "pdflatex" -> return Pdflatex
+        "hevea" -> return Hevea
+        "xelatex" -> return Xelatex
+        "latexmk" -> return Latexmk
+        c -> fail $(isS "unknown command #{c}")
 
 
 data Build = Build
@@ -144,15 +145,15 @@ data Repo = Repo
     }
 
 instance FromJSON Repo where
-    parseJSON (Object o) =
+    parseJSON = withObject "expected object" $ \o ->
         Repo
             <$> o .: "full_name"
             <*> o .: "id"
             <*> o .: "url"
-    parseJSON _ = mzero
 
 instance ToJSON Repo where
-    toJSON Repo{repoName, repoId, apiUrl} = object ["full_name".=repoName, "id".=repoId, "url".=apiUrl]
+    toJSON Repo{repoName, repoId, apiUrl} =     
+        object ["full_name".=repoName, "id".=repoId, "url".=apiUrl]
 
 
 let dropPrefix p t = fromMaybe t $ stripPrefix p t
@@ -169,10 +170,10 @@ let dropPrefix p t = fromMaybe t $ stripPrefix p t
 
 
 instance FromJSON BuildConf where
-    parseJSON (Object o) = BuildConf
-        <$> o .: "builds"
-        <*> o .:? "includes" .!= mempty
-    parseJSON _ = mzero
+    parseJSON = withObject "expected object" $ \o ->
+        BuildConf
+            <$> o .: "builds"
+            <*> o .:? "includes" .!= mempty
 
 
 type LBuilder = ExceptT Text (LoggingT IO)
@@ -226,10 +227,6 @@ waitForBuilders :: Foldable f => f (Async (Either Text ())) -> LBuilder ()
 waitForBuilders = F.traverse_ wait
 
 
-runBuildersAndWait :: Traversable f => f (LBuilder ()) -> LBuilder ()
-runBuildersAndWait = traverse async >=> waitForBuilders
-
-
 verifyUAgent :: (MonadIO m, MonadError Text m, MonadLogger m)
              => WatchConf -> ByteString -> ByteString -> Maybe String -> m ()
 verifyUAgent WatchConf{secret = Nothing} _ _ _ = return ()
@@ -256,7 +253,7 @@ gitRefresh url targetDir = do
                     else proc "git" ["clone", url, targetDir]
     (code, stdout, stderr) <- liftIO $ readCreateProcessWithExitCode process ""
     case code of
-        ExitSuccess -> logDebugNS "worker" $(isT "git #{if exists then \"pull\" :: Text else \"clone\"} succeeded")
+        ExitSuccess -> logDebugNS "worker" $(is "git #{if exists then \"pull\" else \"clone\"} succeeded")
         ExitFailure _ -> do
             logDebugNS "worker" "git failed"
             throwError $(isT "Git process failed with \n#{stdout}\n#{stderr}")
@@ -280,18 +277,16 @@ buildProject directory = do
 
     logDebugNS "worker" $(isT "Found #{length relativeIncludes} includes")
 
-    runBuildersAndWait $ map makeInclude relativeIncludes
+    mapConcurrently_ makeInclude relativeIncludes
 
     let relativeBuilds = map snd $ fromList $ mapToList builds
 
     logDebugNS "worker" $(isT "Found #{length relativeBuilds} builds")
     logDebugNS "worker" $(isT "Found #{length (relativeBuilds >>= files)} files")
 
-    started <- traverse (buildAll directory) relativeBuilds
+    logDebugNS "worker" "Starting builds"
 
-    logDebugNS "worker" "Builds started"
-
-    waitForBuilders $ join started
+    mapConcurrently_ (buildAll directory) relativeBuilds
 
     logDebugNS "worker" "Builds finished"
 
@@ -368,11 +363,14 @@ handleCommon watchConf body userAgent eventHeader signature = do
                     throwError $(isT "Ping error. For error details refer top the log.")
                 else do
                     when exists $ logInfoNS "receiver" "Identically named hook config present, overwriting"
-                    return ($(isT "Ping received. Data saved in #{filePath}")
-                           , liftIO $ B.writeFile filePath $ encode hook)
+                    return ( $(isT "Ping received. Data saved in #{filePath}")
+                           , liftIO $ B.writeFile filePath $ encode hook
+                           )
         Right event -> do
             logDebugNS "receiver" "Event parsed, starting execution"
-            return ($(isT "Hook received. For build results refer to the log."), handleEvent watchConf event)
+            return ( $(isT "Hook received. For build results refer to the log.")
+                   , handleEvent watchConf event
+                   )
   where
     directory = fromMaybe defaultDataDirectory $ dataDirectory watchConf
 
