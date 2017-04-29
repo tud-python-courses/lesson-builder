@@ -5,7 +5,6 @@
 module Main where
 
 import           ClassyPrelude
-import           Common
 import           Control.Monad.Except
 import           Control.Monad.Logger
 import qualified Data.ByteString.Char8      as B
@@ -14,8 +13,43 @@ import           LessonBuilder
 import           Network.HTTP.Types
 import           Network.Wai
 import           Network.Wai.Handler.Warp
-import           Options.Applicative
 import           System.Directory
+import           Options.Applicative
+
+
+data Opts = Opts { logLocation :: FilePath
+                 , watchConf   :: FilePath
+                 , port        :: Int
+                 }
+
+
+optsParser :: ParserInfo Opts
+optsParser = info (helper <*> struct) frame
+  where
+    frame = header "lesson-builder, a webhook endpoint" ++ fullDesc
+    struct = Opts
+        <$> strOption
+                (  long "log-location"
+                ++ short 'l'
+                ++ metavar "PATH"
+                ++ help "where to write the log to"
+                )
+        <*> strOption
+                (  long "watch-conf"
+                ++ short 'w'
+                ++ metavar "PATH"
+                ++ help "location of the watch config"
+                ++ showDefault
+                ++ value "watch_conf.json"
+                )
+        <*> option auto
+                (  long "port"
+                ++ short 'p'
+                ++ metavar "INTEGER"
+                ++ help "port to bind to"
+                ++ showDefault
+                ++ value 8000
+                )
 
 
 
@@ -34,8 +68,7 @@ app logLocation confLocation request respond = runStderrLoggingT $ do
             liftIO $ respond $ responseLBS badRequest400 [] (encodeUtf8 $ fromStrict err)
         Right (msg, action) -> do
             logInfoNS "server" "Responding okay"
-            void $ async $
-                runExceptT action >>= either logErrorN return
+            void $ async $ runExceptT action >>= either logErrorN return
             liftIO $ respond $ responseLBS ok200 [] (encodeUtf8 $ fromStrict msg)
   where
     signature = lookup "X-Hub-Signature" $ requestHeaders request

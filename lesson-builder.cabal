@@ -39,7 +39,7 @@ library
                      , vector
                      , yaml
                      , unix
-                     , marvin-interpolate > 0.4
+                     , marvin-interpolate > 1.0
   hs-source-dirs:      src
   default-language:    Haskell2010
   default-extensions:  MultiParamTypeClasses
@@ -50,7 +50,6 @@ library
 
 executable lesson-builder-server
   main-is:             Main.hs
-  other-modules:       Common
   hs-source-dirs:      app
   build-depends:       base <5
                      , lesson-builder
@@ -72,24 +71,3 @@ executable lesson-builder-server
                      , OverloadedStrings
                      , LambdaCase
 
-executable lesson-builder-cgi
-  main-is:             CGIMain.hs
-  other-modules:       Common
-  hs-source-dirs:      app
-  build-depends:       base <5
-                     , lesson-builder
-                     , classy-prelude
-                     , monad-logger
-                     , optparse-applicative
-                     , aeson
-                     , cgi
-                     , bytestring
-                     , directory
-                     , mtl
-                     , hdaemonize
-  default-language:    Haskell2010
-  default-extensions:  MultiParamTypeClasses
-                     , NoImplicitPrelude
-                     , TupleSections
-                     , OverloadedStrings
-                     , LambdaCase

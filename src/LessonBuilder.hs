@@ -8,8 +8,8 @@
 module LessonBuilder where
 
 
-import           ClassyPrelude                   hiding (async)
-import           Control.Concurrent.Async.Lifted
+import ClassyPrelude hiding (async)
+import Control.Concurrent.Async.Lifted
 import           Control.Monad.Except            (ExceptT (..), MonadError,
                                                   runExceptT, throwError)
 import           Control.Monad.Logger
@@ -78,21 +78,33 @@ data Command
     | Hevea
     | Xelatex
     | Latexmk
+    | Custom String [String]
     deriving (Show, Eq, Ord, Generic, Hashable)
 
 
 instance ToJSON Command where
-    toJSON = String . toLower . pack . show
+    toJSON (Custom command args) = object ["command" .= command, "args" .= args]
+    toJSON a = String $ 
+        case a of
+            HtLatex -> "htlatex"
+            Pdflatex -> "pdflatex"
+            Hevea -> "hevea"
+            Xelatex -> "xelatex"
+            Latexmk -> "latexmk"
+
 
 
 instance FromJSON Command where
-    parseJSON = withText "expected string" $ \case
-        "htlatex" -> return HtLatex
-        "pdflatex" -> return Pdflatex
-        "hevea" -> return Hevea
-        "xelatex" -> return Xelatex
-        "latexmk" -> return Latexmk
-        c -> fail $(isS "unknown command #{c}")
+    parseJSON (Object o) = Custom <$> o .: "command" <*> o .: "args"
+    parseJSON (String t) = 
+        case t of
+            "htlatex" -> return HtLatex
+            "pdflatex" -> return Pdflatex
+            "hevea" -> return Hevea
+            "xelatex" -> return Xelatex
+            "latexmk" -> return Latexmk
+            _ -> fail $(isS "unknown command #{t}")
+    parseJSON _ = fail "Expected object or text"
 
 
 data Build = Build
@@ -190,8 +202,8 @@ ensureTargetDir = liftIO . createDirectoryIfMissing True
 
 shellBuildWithRepeat :: Command -> CreateProcess -> Int -> LBuilder ()
 shellBuildWithRepeat command process repeats = do
-    res <- lastMay <$> (replicateM repeats (liftIO $ readCreateProcessWithExitCode process "") :: LBuilder [(ExitCode, String, String)])
-    case res of
+    res <- replicateM repeats (liftIO $ readCreateProcessWithExitCode process "")
+    case lastMay (res :: Vector (ExitCode, String, String)) of
         Nothing -> throwError $(isT "Unexpected number of repeats: #{repeats}")
         Just (ExitSuccess, _, _) -> logDebugNS "build" $(isT "Successfully executed #{command}")
         Just (ExitFailure i, _, _) -> do
@@ -216,11 +228,11 @@ buildIt wd b@Build{command, targetDir, sourceDir} file = do
     repeats = 2
 
 
-buildAll :: FilePath -> Build -> LBuilder (Vector (Async (Either Text ())))
+buildAll :: FilePath -> Build -> LBuilder ()
 buildAll wd b@Build{targetDir} = do
     logDebugNS "worker" $(isT "Checking target directory #{targetDir}")
     ensureTargetDir (wd </> targetDir)
-    mapM (async . buildIt wd b) (files b)
+    mapConcurrently_ (async . buildIt wd b) (files b)
 
 
 waitForBuilders :: Foldable f => f (Async (Either Text ())) -> LBuilder ()
