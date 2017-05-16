@@ -67,3 +67,5 @@ cgi-bin/
 /.data/
 /test/req.json
 .DS_Store
+
+*.sublime-*

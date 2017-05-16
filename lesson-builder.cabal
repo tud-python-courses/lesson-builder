@@ -16,8 +16,10 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
-  exposed-modules:   LessonBuilder
-  -- other-modules:
+  exposed-modules:     LessonBuilder
+                     , LessonBuilder.Types
+                     , LessonBuilder.Serialize
+  other-modules:       Util
   -- other-extensions:
   build-depends:       base >=4.8 && <5
                      , warp
@@ -26,7 +28,6 @@ library
                      , bytestring
                      , unordered-containers
                      , aeson
-                     , classy-prelude
                      , process
                      , lifted-async
                      , monad-logger
@@ -40,10 +41,13 @@ library
                      , yaml
                      , unix
                      , marvin-interpolate > 1.0
+                     , microlens-platform
+                     , lifted-async
+                     , hashable
+                     , lifted-base
   hs-source-dirs:      src
   default-language:    Haskell2010
   default-extensions:  MultiParamTypeClasses
-                     , NoImplicitPrelude
                      , TupleSections
                      , LambdaCase
                      , OverloadedStrings
@@ -53,7 +57,6 @@ executable lesson-builder-server
   hs-source-dirs:      app
   build-depends:       base <5
                      , lesson-builder
-                     , classy-prelude
                      , monad-logger
                      , wai
                      , optparse-applicative
@@ -64,9 +67,11 @@ executable lesson-builder-server
                      , mtl
                      , directory
                      , http-types
+                     , microlens
+                     , text
+                     , lifted-async
   default-language:    Haskell2010
   default-extensions:  MultiParamTypeClasses
-                     , NoImplicitPrelude
                      , TupleSections
                      , OverloadedStrings
                      , LambdaCase

@@ -1,28 +1,41 @@
-{-# LANGUAGE DeriveAnyClass   #-}
-{-# LANGUAGE DeriveGeneric    #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NamedFieldPuns   #-}
-{-# LANGUAGE OverloadedLists  #-}
-{-# LANGUAGE TemplateHaskell  #-}
-{-# LANGUAGE TypeFamilies     #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE OverloadedLists       #-}
+{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TypeFamilies          #-}
 module LessonBuilder where
 
 
-import ClassyPrelude hiding (async)
-import Control.Concurrent.Async.Lifted
+import           Control.Arrow                   ((&&&))
+import           Control.Concurrent.Async.Lifted
 import           Control.Monad.Except            (ExceptT (..), MonadError,
                                                   runExceptT, throwError)
 import           Control.Monad.Logger
 import           Crypto.Hash
 import           Crypto.MAC.HMAC
-import           Data.Aeson                      as Aeson
-import           Data.Aeson.TH
-import           Data.Aeson.Types
+
+import           Control.Exception.Lifted
+import           Control.Monad
+import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8           as BS
 import qualified Data.ByteString.Lazy.Char8      as B
+import           Data.Char
 import qualified Data.Foldable                   as F
-import           Data.Vector                     (Vector)
-import qualified Data.Yaml                       as Yaml
+import           Data.Hashable
+import           Data.HashMap.Strict             (HashMap)
+import qualified Data.HashMap.Strict             as HM
+import           Data.List                       (isInfixOf, isPrefixOf,
+                                                  stripPrefix)
+import           Data.Maybe                      (fromMaybe)
+import           Data.Text                       (Text)
+import qualified Data.Text                       as T
+import qualified Data.Vector                     as V
+import           GHC.Generics
+import           Lens.Micro.Platform
+import           LessonBuilder.Serialize
+import           LessonBuilder.Types
 import           Marvin.Interpolate.All
 import           System.Directory
 import           System.Exit
@@ -30,22 +43,11 @@ import           System.FilePath
 import qualified System.Posix.Process            as Proc
 import           System.Process
 import           Text.Printf
-
-
-data Include = Include
-    { includeRepository :: !String
-    , includeDirectory  :: !FilePath
-    }
-
-
-data BuildConf = BuildConf
-    { builds   :: !(HashMap String Build)
-    , includes :: !(Vector Include)
-    }
+import           Util
 
 
 defaultDataDirectory :: FilePath
-defaultDataDirectory = ".data"
+defaultDataDirectory = ".builder-data"
 
 
 buildConfigName :: FilePath
@@ -72,128 +74,7 @@ texOutExt =
     ]
 
 
-data Command
-    = HtLatex
-    | Pdflatex
-    | Hevea
-    | Xelatex
-    | Latexmk
-    | Custom String [String]
-    deriving (Show, Eq, Ord, Generic, Hashable)
-
-
-instance ToJSON Command where
-    toJSON (Custom command args) = object ["command" .= command, "args" .= args]
-    toJSON a = String $ 
-        case a of
-            HtLatex -> "htlatex"
-            Pdflatex -> "pdflatex"
-            Hevea -> "hevea"
-            Xelatex -> "xelatex"
-            Latexmk -> "latexmk"
-
-
-
-instance FromJSON Command where
-    parseJSON (Object o) = Custom <$> o .: "command" <*> o .: "args"
-    parseJSON (String t) = 
-        case t of
-            "htlatex" -> return HtLatex
-            "pdflatex" -> return Pdflatex
-            "hevea" -> return Hevea
-            "xelatex" -> return Xelatex
-            "latexmk" -> return Latexmk
-            _ -> fail $(isS "unknown command #{t}")
-    parseJSON _ = fail "Expected object or text"
-
-
-data Build = Build
-    { command   :: !Command
-    , targetDir :: !FilePath
-    , sourceDir :: !FilePath
-    , files     :: !(Vector FilePath)
-    }
-
-
-data Watch = Watch
-    { watchName :: !String
-    , directory :: !FilePath
-    }
-
-
-data WatchConf = WatchConf
-    { dataDirectory  :: !(Maybe FilePath)
-    , watched        :: !(Vector Watch)
-    , secret         :: !(Maybe String)
-    , reposDirectory :: !(Maybe FilePath)
-    }
-
-
-data CommitData = CommitData { commitMessage :: !String }
-
-
-data Event
-    = PushEvent !Push
-    | PingEvent !Ping
-
-
-data Push = Push
-    { pushRepository :: !Repo
-    , pushHeadCommit :: !CommitData
-    }
-
-
-data Ping = Ping
-    { pingRepository :: !Repo
-    , hookId         :: !Int
-    , hook           :: !Value
-    }
-
-
-data Repo = Repo
-    { repoName :: !String
-    , repoId   :: !Int
-    , apiUrl   :: !String
-    }
-
-instance FromJSON Repo where
-    parseJSON = withObject "expected object" $ \o ->
-        Repo
-            <$> o .: "full_name"
-            <*> o .: "id"
-            <*> o .: "url"
-
-instance ToJSON Repo where
-    toJSON Repo{repoName, repoId, apiUrl} =     
-        object ["full_name".=repoName, "id".=repoId, "url".=apiUrl]
-
-
-let dropPrefix p t = fromMaybe t $ stripPrefix p t
-    prefixOpts prefix = defaultOptions { fieldLabelModifier = camelTo2 '_' . dropPrefix prefix } in
-    join <$> sequence
-        [ deriveJSON (prefixOpts "commit" ) ''CommitData
-        , deriveJSON (prefixOpts "include") ''Include
-        , deriveJSON (prefixOpts "build"  ) ''Build
-        , deriveJSON (prefixOpts "ping"   ) ''Ping
-        , deriveJSON (prefixOpts "push"   ) ''Push
-        , deriveJSON (prefixOpts "watch"  ) ''Watch
-        , deriveJSON defaultOptions { fieldLabelModifier = camelTo2 '_' } ''WatchConf
-        ]
-
-
-instance FromJSON BuildConf where
-    parseJSON = withObject "expected object" $ \o ->
-        BuildConf
-            <$> o .: "builds"
-            <*> o .:? "includes" .!= mempty
-
-
 type LBuilder = ExceptT Text (LoggingT IO)
-
-
-mapLeft :: (a -> c) -> Either a b -> Either c b
-mapLeft f (Left err) = Left $ f err
-mapLeft _ (Right v) = Right v
 
 
 ensureTargetDir :: FilePath -> LBuilder ()
@@ -203,7 +84,7 @@ ensureTargetDir = liftIO . createDirectoryIfMissing True
 shellBuildWithRepeat :: Command -> CreateProcess -> Int -> LBuilder ()
 shellBuildWithRepeat command process repeats = do
     res <- replicateM repeats (liftIO $ readCreateProcessWithExitCode process "")
-    case lastMay (res :: Vector (ExitCode, String, String)) of
+    case res ^? _last of
         Nothing -> throwError $(isT "Unexpected number of repeats: #{repeats}")
         Just (ExitSuccess, _, _) -> logDebugNS "build" $(isT "Successfully executed #{command}")
         Just (ExitFailure i, _, _) -> do
@@ -213,26 +94,26 @@ shellBuildWithRepeat command process repeats = do
 
 
 outputToDirectory :: Build -> FilePath -> [String]
-outputToDirectory Build{command=Hevea, targetDir} file = ["-o", targetDir </> file -<.> "html"]
-outputToDirectory Build{targetDir} _ = ["-output-directory", targetDir]
+outputToDirectory b@Build{buildCommand=Hevea} file = ["-o", b ^. targetDir </> file -<.> "html"]
+outputToDirectory b _ = ["-output-directory", b ^. targetDir]
 
 
 buildIt :: FilePath -> Build -> String -> LBuilder ()
-buildIt wd b@Build{command, targetDir, sourceDir} file = do
-    logDebugNS "worker" $(isT "Executing #{command} in #{sourceDir} to #{targetDir}")
-    absTargetDir <- liftIO $ makeAbsolute targetDir
-    let process = (proc commandStr (outputToDirectory b { targetDir = absTargetDir } file ++ fromMaybe [] (lookup command additionalCommandOptions) ++ [file])) { cwd = Just $ wd </> sourceDir }
-    shellBuildWithRepeat command process repeats
+buildIt wd b file = do
+    logDebugNS "worker" $(isT "Executing #{b^.command} in #{b^.sourceDir} to #{b^.targetDir}")
+    absTargetDir <- liftIO $ makeAbsolute $ b^.targetDir
+    let process = (proc commandStr (outputToDirectory (b & targetDir .~ absTargetDir) file ++ fromMaybe [] (additionalCommandOptions ^? ix (b^.command)) ++ [file])) { cwd = Just $ wd </> b^.sourceDir }
+    shellBuildWithRepeat (b^.command) process repeats
   where
-    commandStr = toLower $ show command
+    commandStr = map toLower $ show $ b^.command
     repeats = 2
 
 
 buildAll :: FilePath -> Build -> LBuilder ()
-buildAll wd b@Build{targetDir} = do
-    logDebugNS "worker" $(isT "Checking target directory #{targetDir}")
-    ensureTargetDir (wd </> targetDir)
-    mapConcurrently_ (async . buildIt wd b) (files b)
+buildAll wd b = do
+    logDebugNS "worker" $(isT "Checking target directory #{b^.targetDir}")
+    ensureTargetDir (wd </> b^.targetDir)
+    mapConcurrently_ (async . buildIt wd b) (b ^. files)
 
 
 waitForBuilders :: Foldable f => f (Async (Either Text ())) -> LBuilder ()
@@ -240,13 +121,13 @@ waitForBuilders = F.traverse_ wait
 
 
 verifyUAgent :: (MonadIO m, MonadError Text m, MonadLogger m)
-             => WatchConf -> ByteString -> ByteString -> Maybe String -> m ()
-verifyUAgent WatchConf{secret = Nothing} _ _ _ = return ()
+             => WatchConf -> BS.ByteString -> BS.ByteString -> Maybe String -> m ()
+verifyUAgent WatchConf{watchConfSecret = Nothing} _ _ _ = return ()
 verifyUAgent _ _ _ Nothing = do
     logErrorNS "verify" "Missing signature"
     throwError "Missing signature"
-verifyUAgent WatchConf{secret = Just secret'} payload userAgent (Just signature) = do
-    unless ("GitHub-Hookshot/" `isPrefixOf` userAgent) $ do
+verifyUAgent WatchConf{watchConfSecret = Just secret'} payload userAgent (Just signature) = do
+    unless ("GitHub-Hookshot/" `BS.isPrefixOf` userAgent) $ do
         logErrorNS "verify" $ $(isT "Weird user agent #{BS.unpack userAgent}")
         throwError "Wrong user agent"
     unless (sig == show computed) $ do
@@ -281,24 +162,23 @@ makeInclude Include{includeRepository, includeDirectory} = do
 
 
 buildProject :: FilePath -> LBuilder ()
-buildProject directory = do
-    raw <- liftIO $ B.readFile $ directory </> buildConfigName
-    BuildConf{includes, builds} <- either (\err -> throwError $(isT "Unreadable build configuration: #{err}")) return $ eitherDecode raw
+buildProject directory_ = do
+    bc <- either (\err -> throwError $(isT "Unreadable build configuration: #{err}")) return =<< readBuildConfig (directory_ </> buildConfigName)
 
-    let relativeIncludes = map (\i -> i {includeDirectory = directory </> includeDirectory i}) includes
+    let relativeIncludes = fmap (directory %~ (directory_ </>)) (bc^.includes)
 
     logDebugNS "worker" $(isT "Found #{length relativeIncludes} includes")
 
     mapConcurrently_ makeInclude relativeIncludes
 
-    let relativeBuilds = map snd $ fromList $ mapToList builds
+    let relativeBuilds = fmap snd $ V.fromList $ HM.toList (bc^.builds)
 
     logDebugNS "worker" $(isT "Found #{length relativeBuilds} builds")
-    logDebugNS "worker" $(isT "Found #{length (relativeBuilds >>= files)} files")
+    logDebugNS "worker" $(isT "Found #{length (relativeBuilds >>= (^.files))} files")
 
     logDebugNS "worker" "Starting builds"
 
-    mapConcurrently_ (buildAll directory) relativeBuilds
+    mapConcurrently_ (buildAll directory_) relativeBuilds
 
     logDebugNS "worker" "Builds finished"
 
@@ -311,61 +191,48 @@ repoToUrl Repo{repoName} = "https://github.com/" ++ repoName
 
 
 handleEvent :: WatchConf -> Event -> LBuilder ()
-handleEvent WatchConf{watched, reposDirectory} = handle
+handleEvent wc = handle
   where
     handle (PingEvent Ping{}) = logErrorNS "worker" "Ping event should not be handeled in worker"
-    handle (PushEvent Push{pushRepository, pushHeadCommit}) =
+    handle (PushEvent push) =
         flip catch onExcept $
             -- TODO handle special events (push to own repo)
-            case lookup (repoName pushRepository) watchMap of
+            case watchMap ^? ix (push ^. repository . name) of
                 Nothing -> throwError "Unrecognized repository"
-                _ | any (`isInfixOf` commitMessage pushHeadCommit) skipStrings -> do
+                _ | any (`isInfixOf` (push ^. headCommit . message)) skipStrings -> do
                     logInfoNS "worker" "skipping commit due to skip message"
-                    return ()
-                Just Watch{directory} -> do
+                Just w -> do
                     wd <- liftIO getCurrentDirectory
-                    logDebugNS "worker" $(isT "Found watch targeting directory #{directory}")
+                    logDebugNS "worker" $(isT "Found watch targeting directory #{w^.directory}")
                     makeInclude Include
-                        { includeDirectory = wd </> fromMaybe "." reposDirectory </> directory
-                        , includeRepository = repoToUrl pushRepository
+                        { includeDirectory = wd </> fromMaybe "." (wc^.reposDirectory) </> (w^.directory)
+                        , includeRepository = repoToUrl (push^.repository)
                         }
 
     watchMap :: HashMap String Watch
-    watchMap = mapFromList $ map (watchName &&& id) $ toList watched
+    watchMap = HM.fromList $ map (watchName &&& id) $ V.toList (wc^.watched)
     onExcept e = throwError $(isT "#{e :: SomeException}")
-
-
-readConf :: MonadIO m => FilePath -> m (Either Text WatchConf)
-readConf fp = mapLeft pack . reader <$> liftIO (B.readFile fp)
-  where
-    reader
-        | takeExtension fp `elem` ([".yaml", ".yml"] :: [String]) = Aeson.eitherDecode
-        | takeExtension fp == ".json" = Yaml.decodeEither . toStrict
-        | otherwise = const $ Left "Unknown Extension"
 
 
 
 handleCommon :: WatchConf
              -> B.ByteString -- ^ Request body
-             -> ByteString -- ^ User Agent string
-             -> ByteString -- ^ Event type
+             -> BS.ByteString -- ^ User Agent string
+             -> BS.ByteString -- ^ Event type
              -> Maybe String -- ^ Signature
              -> LBuilder (Text, LBuilder ())
 handleCommon watchConf body userAgent eventHeader signature = do
-    verifyUAgent watchConf (toStrict body) userAgent signature
+    verifyUAgent watchConf (B.toStrict body) userAgent signature
     logDebugNS "receiver" "Verification successful"
-    let ev = case eventHeader of
-                "push" -> PushEvent <$> eitherDecode body
-                "ping" -> PingEvent <$> eitherDecode body
-                a -> Left $ "unknown event type " ++ BS.unpack a
+    let ev = decodeEvent eventHeader body
     case ev of
         Left err -> do
             logErrorNS "receiver" "Unparseable json"
             logErrorNS "receiver" $(isT "#{err}")
             throwError $(isT "Unparseable json. For details on the error refer to the log.")
-        Right (PingEvent Ping{hookId, hook}) -> do
+        Right (PingEvent ping) -> do
             logInfoNS "receiver" "Ping received"
-            let fileName = $(isS "hook_#{hookId}.conf.json")
+            let fileName = $(isS "hook_#{ping^.hookId}.conf.json")
                 filePath = directory </> fileName
             isDir <- liftIO $ doesDirectoryExist filePath
             exists <- liftIO $ doesFileExist filePath
@@ -376,7 +243,7 @@ handleCommon watchConf body userAgent eventHeader signature = do
                 else do
                     when exists $ logInfoNS "receiver" "Identically named hook config present, overwriting"
                     return ( $(isT "Ping received. Data saved in #{filePath}")
-                           , liftIO $ B.writeFile filePath $ encode hook
+                           , writeHook filePath $ ping^.hook
                            )
         Right event -> do
             logDebugNS "receiver" "Event parsed, starting execution"
@@ -384,5 +251,5 @@ handleCommon watchConf body userAgent eventHeader signature = do
                    , handleEvent watchConf event
                    )
   where
-    directory = fromMaybe defaultDataDirectory $ dataDirectory watchConf
+    directory = fromMaybe defaultDataDirectory $ watchConf ^. dataDirectory
 
