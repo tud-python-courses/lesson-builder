@@ -1,3 +1,12 @@
+{-|
+Module      : $Header$
+Description : Reading, writing and serializing data.
+Copyright   : (c) Justus Adam 2017.
+License     : MIT
+Maintainer  : dev@justus.science
+Stability   : experimental
+Portability : portable
+-}
 module LessonBuilder.Serialize where
 
 import           Control.Monad.IO.Class
@@ -6,20 +15,22 @@ import           Data.Aeson.TH
 import           Data.Aeson.Types
 import qualified Data.ByteString.Char8  as BS
 import qualified Data.ByteString.Lazy   as B
-import           Data.Text              (Text, pack)
+import           Data.Text              (Text)
 import qualified Data.Yaml              as Yaml
+import           Lens.Micro.Platform
 import           LessonBuilder.Types
 import           System.FilePath
 import           Util
 
 
 readConf :: MonadIO m => FilePath -> m (Either Text WatchConf)
-readConf fp = mapLeft pack . reader <$> liftIO (B.readFile fp)
+readConf fp = mapLeft (^.packed) . reader <$> liftIO (B.readFile fp)
   where
     reader
-        | takeExtension fp `elem` ([".yaml", ".yml"] :: [String]) = Yaml.decodeEither . B.toStrict
-        | takeExtension fp == ".json" = eitherDecode
+        | ext == ".yaml" || ext == ".yml" = Yaml.decodeEither . B.toStrict
+        | ext == ".json" = eitherDecode
         | otherwise = const $ Left "Unknown Extension"
+      where ext = takeExtension fp
 
 
 writeHook :: MonadIO m => FilePath -> Value -> m ()

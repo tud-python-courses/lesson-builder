@@ -1,3 +1,12 @@
+{-|
+Module      : $Header$
+Description : Types, lenses, to and from json instances.
+Copyright   : (c) Justus Adam 2017.
+License     : MIT
+Maintainer  : dev@justus.science
+Stability   : experimental
+Portability : portable
+-}
 {-# LANGUAGE DeriveAnyClass         #-}
 {-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE FlexibleInstances      #-}

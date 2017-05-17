@@ -1,3 +1,12 @@
+{-|
+Module      : $Header$
+Description : The build logic. Async and hook verification.
+Copyright   : (c) Justus Adam 2017.
+License     : MIT
+Maintainer  : dev@justus.science
+Stability   : experimental
+Portability : portable
+-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}

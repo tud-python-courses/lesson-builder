@@ -1,3 +1,12 @@
+{-|
+Module      : $Header$
+Description : The server.
+Copyright   : (c) Justus Adam 2017.
+License     : MIT
+Maintainer  : dev@justus.science
+Stability   : experimental
+Portability : portable
+-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
