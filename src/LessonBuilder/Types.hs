@@ -25,6 +25,7 @@ import           Data.Hashable
 import           Data.HashMap.Strict    (HashMap)
 import           Data.List              (stripPrefix)
 import           Data.Maybe             (fromMaybe)
+import           Data.Text              (Text)
 import           Data.Vector            (Vector)
 import           GHC.Generics
 import           Lens.Micro.Platform    hiding ((.=))
@@ -34,6 +35,7 @@ import           Marvin.Interpolate.All
 data Include = Include
     { includeRepository :: !String
     , includeDirectory  :: !FilePath
+    , includeConfigFile :: Maybe FilePath
     }
 
 
@@ -44,12 +46,14 @@ data BuildConf = BuildConf
 
 
 data Command
-    = HtLatex
-    | Pdflatex
-    | Hevea
-    | Xelatex
-    | Latexmk
-    | Custom String [String]
+    = HtLatex  { commandArgs    :: [Text] }
+    | Pdflatex { commandArgs    :: [Text] }
+    | Hevea    { commandArgs    :: [Text] }
+    | Xelatex  { commandArgs    :: [Text] }
+    | Latexmk  { commandArgs    :: [Text] }
+    | Custom   { commandCommand :: Text
+               , commandArgs    :: [Text]
+               }
     deriving (Show, Eq, Ord, Generic, Hashable)
 
 
@@ -62,8 +66,9 @@ data Build = Build
 
 
 data Watch = Watch
-    { watchName      :: !String
-    , watchDirectory :: !FilePath
+    { watchName       :: !String
+    , watchDirectory  :: !FilePath
+    , watchConfigFile :: Maybe FilePath
     }
 
 
@@ -73,8 +78,6 @@ data WatchConf = WatchConf
     , watchConfSecret         :: !(Maybe String)
     , watchConfReposDirectory :: !(Maybe FilePath)
     }
-
-
 
 
 newtype CommitData = CommitData { commitDataMessage :: String }
@@ -115,34 +118,33 @@ makeFields ''Ping
 makeFields ''Repo
 
 
+commandToStr (Custom c _) = c
+commandToStr (HtLatex _)  = "htlatex"
+commandToStr (Pdflatex _) = "pdflatex"
+commandToStr (Hevea _)    = "hevea"
+commandToStr (Xelatex _)  = "xelatex"
+commandToStr (Latexmk _)  = "latexmk"
+
+
 instance ToJSON Command where
-    toJSON (Custom command args) = object ["command" .= command, "args" .= args]
-    toJSON a = String $
-        case a of
-            HtLatex  -> "htlatex"
-            Pdflatex -> "pdflatex"
-            Hevea    -> "hevea"
-            Xelatex  -> "xelatex"
-            Latexmk  -> "latexmk"
+    toJSON cmd = object ["command" .= commandToStr cmd, "args" .= commandArgs cmd]
 
-
+cmdFromString "htlatex"  = HtLatex
+cmdFromString "pdflatex" = Pdflatex
+cmdFromString "hevea"    = Hevea
+cmdFromString "xelatex"  = Xelatex
+cmdFromString "latexmk"  = Latexmk
+cmdFromString str        = Custom str
 
 instance FromJSON Command where
     parseJSON v@(Array _) = do
         l <- parseJSON v
         case l of
-            (cmd:args) -> return $ Custom cmd args
+            (cmd:args) -> return $ cmdFromString cmd args
             []         -> fail "Need list with at least one element"
-    parseJSON (Object o) = Custom <$> o .: "command" <*> o .: "args"
-    parseJSON (String t) =
-        case t of
-            "htlatex"  -> return HtLatex
-            "pdflatex" -> return Pdflatex
-            "hevea"    -> return Hevea
-            "xelatex"  -> return Xelatex
-            "latexmk"  -> return Latexmk
-            _          -> fail $(isS "unknown command #{t}")
-    parseJSON _ = fail "Expected object or text"
+    parseJSON (Object o) = cmdFromString <$> o .: "command" <*> o .:? "args" .!= []
+    parseJSON (String t) = return $ cmdFromString t []
+    parseJSON _ = fail "Expected object, text or array"
 
 
 instance FromJSON Repo where
@@ -170,11 +172,11 @@ instance FromJSON BuildConf where
 let dropPrefix p t = fromMaybe t $ stripPrefix p t
     prefixOpts prefix = defaultOptions { fieldLabelModifier = camelTo2 '_' . dropPrefix prefix } in
     join <$> sequence
-        [ deriveJSON (prefixOpts "commit" ) ''CommitData
+        [ deriveJSON (prefixOpts "commitData" ) ''CommitData
         , deriveJSON (prefixOpts "include") ''Include
         , deriveJSON (prefixOpts "build"  ) ''Build
         , deriveJSON (prefixOpts "ping"   ) ''Ping
         , deriveJSON (prefixOpts "push"   ) ''Push
         , deriveJSON (prefixOpts "watch"  ) ''Watch
-        , deriveJSON defaultOptions { fieldLabelModifier = camelTo2 '_' } ''WatchConf
+        , deriveJSON (prefixOpts "watchConf") ''WatchConf
         ]

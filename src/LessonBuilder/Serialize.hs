@@ -30,7 +30,7 @@ readConf fp = mapLeft (^.packed) . reader <$> liftIO (B.readFile fp)
         | ext == ".yaml" || ext == ".yml" = Yaml.decodeEither . B.toStrict
         | ext == ".json" = eitherDecode
         | otherwise = const $ Left "Unknown Extension"
-      where ext = takeExtension fp
+    ext = takeExtension fp
 
 
 writeHook :: MonadIO m => FilePath -> Value -> m ()

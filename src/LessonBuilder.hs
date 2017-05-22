@@ -40,6 +40,7 @@ import           Data.List                       (isInfixOf, isPrefixOf,
 import           Data.Maybe                      (fromMaybe)
 import           Data.Text                       (Text)
 import qualified Data.Text                       as T
+import           Data.Text.Format.Simple
 import qualified Data.Vector                     as V
 import           GHC.Generics
 import           Lens.Micro.Platform
@@ -59,28 +60,26 @@ defaultDataDirectory :: FilePath
 defaultDataDirectory = ".builder-data"
 
 
-buildConfigName :: FilePath
-buildConfigName = "build_conf.json"
+defaultBuildConfigName :: FilePath
+defaultBuildConfigName = "build_conf.json"
 
 
 skipStrings :: [String]
 skipStrings = ["[skip build]", "[build skip]"]
 
 
-additionalCommandOptions :: HashMap Command [String]
-additionalCommandOptions =
-    [ (HtLatex , ["-halt-on-error", "-interaction=nonstopmode"])
-    , (Pdflatex, ["-halt-on-error", "-interaction=nonstopmode"])
-    ]
+additionalCommandOptions :: Command -> [String]
+additionalCommandOptions (HtLatex _) = ["-halt-on-error", "-interaction=nonstopmode"]
+additionalCommandOptions (Pdflatex _) = ["-halt-on-error", "-interaction=nonstopmode"]
+additionalCommandOptions _ = []
 
 
-texOutExt :: HashMap Command String
-texOutExt =
-    [ (HtLatex, "html")
-    , (Pdflatex, "pdf")
-    , (Xelatex, "pdf")
-    , (Hevea, "html")
-    ]
+-- texOutExt :: Command -> Maybe String
+-- texOutExt (HtLatex _) = Just "html"
+-- texOutExt (Pdflatex _) = Just "pdf"
+-- texOutExt (Xelatex _) = Just "pdf"
+-- texOutExt (Hevea _) = Just "html"
+-- texOutExt _ = Nothing
 
 
 type LBuilder = ExceptT Text (LoggingT IO)
@@ -96,37 +95,47 @@ shellBuildWithRepeat command process repeats = do
     case res ^? _last of
         Nothing -> throwError $(isT "Unexpected number of repeats: #{repeats}")
         Just (ExitSuccess, _, _) -> logDebugNS "build" $(isT "Successfully executed #{command}")
-        Just (ExitFailure i, _, _) -> do
-            let str = $(isT "Build failed with #{i} for command #{command} (#{repeats} repeats)")
+        Just (ExitFailure i, stdout, stderr) -> do
+            let str = $(isT "Build failed with #{i} for command #{command}   (#{repeats} repeats)")
             logErrorNS "worker" str
+            logDebugNS "worker" (stderr^.packed)
+            logDebugNS "worker" (stdout^.packed)
             throwError str
 
 
 outputToDirectory :: Build -> FilePath -> [String]
-outputToDirectory b@Build{buildCommand=Hevea} file = ["-o", b ^. targetDir </> file -<.> "html"]
+outputToDirectory b@Build{buildCommand=Hevea _} file = ["-o", b ^. targetDir </> file -<.> "html"]
+outputToDirectory Build{buildCommand=Custom _ _} _ = []
 outputToDirectory b _ = ["-output-directory", b ^. targetDir]
 
 
 buildIt :: FilePath -> Build -> String -> LBuilder ()
 buildIt wd b file = do
     logDebugNS "worker" $(isT "Executing #{b^.command} in #{b^.sourceDir} to #{b^.targetDir}")
-    absTargetDir <- liftIO $ makeAbsolute $ b^.targetDir
-    let process = (proc commandStr (outputToDirectory (b & targetDir .~ absTargetDir) file ++ fromMaybe [] (additionalCommandOptions ^? ix (b^.command)) ++ [file])) { cwd = Just $ wd </> b^.sourceDir }
-    shellBuildWithRepeat (b^.command) process repeats
+    absTargetDir <- liftIO $ makeAbsolute $ wd </> b^.targetDir
+    logDebugNS "worker" $(isT "Building with target dir #{absTargetDir}")
+    let process = proc (commandStr ^. unpacked)
+            $ outputToDirectory (b & targetDir .~ absTargetDir) file
+            ++ additionalCommandOptions (b^.command) ++ [file]
+            ++ map (^.unpacked) otherArgs
+    shellBuildWithRepeat (b^.command) (process { cwd = Just $ wd </> b^.sourceDir }) repeats
   where
-    commandStr = map toLower $ show $ b^.command
+    commandStr = commandToStr $ b^.command
     repeats = 2
+    lookupFunc "targetDir"        = Just $ b^.targetDir.packed
+    lookupFunc "sourceDir"        = Just $ b^.sourceDir.packed
+    lookupFunc "file"             = Just $ file^.packed
+    lookupFunc "workingDirectory" = Just $ wd^.packed
+    lookupFunc _                  = Nothing
+    otherArgs = map f $ commandArgs $ b^.command
+    f arg = either (const arg) fst $ format arg lookupFunc
 
 
 buildAll :: FilePath -> Build -> LBuilder ()
 buildAll wd b = do
     logDebugNS "worker" $(isT "Checking target directory #{b^.targetDir}")
     ensureTargetDir (wd </> b^.targetDir)
-    mapConcurrently_ (async . buildIt wd b) (b ^. files)
-
-
-waitForBuilders :: Foldable f => f (Async (Either Text ())) -> LBuilder ()
-waitForBuilders = F.traverse_ wait
+    mapConcurrently_ (buildIt wd b) (b ^. files)
 
 
 verifyUAgent :: (MonadIO m, MonadError Text m, MonadLogger m)
@@ -162,16 +171,16 @@ gitRefresh url targetDir = do
 
 
 makeInclude :: Include -> LBuilder ()
-makeInclude Include{includeRepository, includeDirectory} = do
-    abs <- liftIO $ makeAbsolute includeDirectory
+makeInclude include = do
+    abs <- liftIO $ makeAbsolute $ include^.directory
     logDebugNS "worker" $(isT "Refreshing repository in #{abs}")
-    gitRefresh includeRepository includeDirectory
+    gitRefresh (include^.repository) (include^.directory)
     logDebugNS "worker" "Building project"
-    buildProject includeDirectory
+    buildProject (include^.directory) (fromMaybe defaultBuildConfigName $ include^.configFile)
 
 
-buildProject :: FilePath -> LBuilder ()
-buildProject directory_ = do
+buildProject :: FilePath -> FilePath -> LBuilder ()
+buildProject directory_ buildConfigName = do
     bc <- either (\err -> throwError $(isT "Unreadable build configuration: #{err}")) return =<< readBuildConfig (directory_ </> buildConfigName)
 
     let relativeIncludes = fmap (directory %~ (directory_ </>)) (bc^.includes)
@@ -188,10 +197,6 @@ buildProject directory_ = do
     logDebugNS "worker" "Starting builds"
 
     mapConcurrently_ (buildAll directory_) relativeBuilds
-
-    logDebugNS "worker" "Builds finished"
-
-    return ()
 
 
 repoToUrl :: Repo -> String
@@ -216,6 +221,7 @@ handleEvent wc = handle
                     makeInclude Include
                         { includeDirectory = wd </> fromMaybe "." (wc^.reposDirectory) </> (w^.directory)
                         , includeRepository = repoToUrl (push^.repository)
+                        , includeConfigFile = w^.configFile
                         }
 
     watchMap :: HashMap String Watch

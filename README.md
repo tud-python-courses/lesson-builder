@@ -28,3 +28,26 @@ Examples for such a conf can be found in the test_resources folder.
 - create a 'repos' directory and a 'builder.log' file
 - ensure your webserver has read and write access to the .log file as well as read, write and execute permissions on the 'repos' directory and all directories and files your build will be trying to write to.
 - set up the [webhooks](https://developer.github.com/webhooks/)
+
+
+## Build conf syntax
+
+### Commands
+
+Commands take one of three syntaxes.
+
+1. As a pure string
+2. As an array, whereby at least one argument must be present.
+    The first argument is the command the others as additional arguments to the command.
+3. As an object with the properties `command` which must be a string and an optional `args` array.
+
+The optional arguments can have certain arguments interpolated with a simple replacement syntax of `${variable}`.
+
+Currently available variables are:
+
+| Variable name         | Meaning                       |
+|-----------------------|-------------------------------|
+| `targetDir`           | The target directory          |
+| `sourceDir`           | The source directory          | 
+| `file`                | The file to be compiled       |
+| `workingDirectory`    | The current working directory |

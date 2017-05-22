@@ -23,9 +23,9 @@ main = do
     let request = initialRequest { method = "POST"
                                  , requestBody = RequestBodyLBS minified
                                  , requestHeaders = requestHeaders initialRequest
-                                    ++ [("User-Agent", "GitHub-Hookshot/6e58126")
+                                    ++ [("User-Agent", "GitHub-Hookshot/3fbb3c7")
                                        , ("X-GitHub-Event", "push")
-                                       , ("X-Hub-Signature", "sha1=1b5d3cec61d46977cabd9df18634eb0494b6c23d")
+                                       , ("X-GitHub-Delivery", "5c5f4180-28f3-11e7-8211-ea0c2399c3bd")
                                        , ("content-type", "application/json")
                                        ]
                                  }
