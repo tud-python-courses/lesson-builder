@@ -10,11 +10,9 @@ import           Network.HTTP.Types
 import           System.Environment
 
 
-main :: IO ()
-main = do
-    [url] <- getArgs
-    manager <- newManager defaultManagerSettings
-    file <- B.readFile "req.json"
+
+sendReq manager url filePath checksum = do
+    file <- B.readFile filePath
 
     let minified = encode (fromMaybe (error "json parsing failed") (decode file) :: Value)
 
@@ -25,7 +23,7 @@ main = do
                                  , requestHeaders = requestHeaders initialRequest
                                     ++ [("User-Agent", "GitHub-Hookshot/3fbb3c7")
                                        , ("X-GitHub-Event", "push")
-                                       , ("X-GitHub-Delivery", "5c5f4180-28f3-11e7-8211-ea0c2399c3bd")
+                                       , ("X-GitHub-Delivery", checksum)
                                        , ("content-type", "application/json")
                                        ]
                                  }
@@ -33,3 +31,13 @@ main = do
     response <- httpLbs request manager
     putStrLn $ show (statusCode $ responseStatus response) ++ " " ++ BS.unpack (statusMessage (responseStatus response))
     print $ responseBody response
+
+
+
+main :: IO ()
+main = do
+    [url] <- getArgs
+    manager <- newManager defaultManagerSettings
+
+    sendReq manager url "req.json" "5c5f4180-28f3-11e7-8211-ea0c2399c3bd"
+    -- sendReq manager url "req-java.json" "bfe96f00-28f3-11e7-805d-4ee62539dd3d"

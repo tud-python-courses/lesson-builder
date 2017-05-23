@@ -46,19 +46,18 @@ data BuildConf = BuildConf
 
 
 data Command
-    = HtLatex  { commandArgs    :: [Text] }
-    | Pdflatex { commandArgs    :: [Text] }
-    | Hevea    { commandArgs    :: [Text] }
-    | Xelatex  { commandArgs    :: [Text] }
-    | Latexmk  { commandArgs    :: [Text] }
-    | Custom   { commandCommand :: Text
-               , commandArgs    :: [Text]
-               }
+    = HtLatex
+    | Pdflatex
+    | Hevea
+    | Xelatex
+    | Latexmk
+    | Custom Text
     deriving (Show, Eq, Ord, Generic, Hashable)
 
 
 data Build = Build
     { buildCommand   :: !Command
+    , buildArgs      :: (Vector Text)
     , buildTargetDir :: !FilePath
     , buildSourceDir :: !FilePath
     , buildFiles     :: !(Vector FilePath)
@@ -118,16 +117,16 @@ makeFields ''Ping
 makeFields ''Repo
 
 
-commandToStr (Custom c _) = c
-commandToStr (HtLatex _)  = "htlatex"
-commandToStr (Pdflatex _) = "pdflatex"
-commandToStr (Hevea _)    = "hevea"
-commandToStr (Xelatex _)  = "xelatex"
-commandToStr (Latexmk _)  = "latexmk"
+commandToStr (Custom c) = c
+commandToStr HtLatex  = "htlatex"
+commandToStr Pdflatex = "pdflatex"
+commandToStr Hevea    = "hevea"
+commandToStr Xelatex  = "xelatex"
+commandToStr Latexmk  = "latexmk"
 
 
 instance ToJSON Command where
-    toJSON cmd = object ["command" .= commandToStr cmd, "args" .= commandArgs cmd]
+    toJSON = String . commandToStr
 
 cmdFromString "htlatex"  = HtLatex
 cmdFromString "pdflatex" = Pdflatex
@@ -137,14 +136,7 @@ cmdFromString "latexmk"  = Latexmk
 cmdFromString str        = Custom str
 
 instance FromJSON Command where
-    parseJSON v@(Array _) = do
-        l <- parseJSON v
-        case l of
-            (cmd:args) -> return $ cmdFromString cmd args
-            []         -> fail "Need list with at least one element"
-    parseJSON (Object o) = cmdFromString <$> o .: "command" <*> o .:? "args" .!= []
-    parseJSON (String t) = return $ cmdFromString t []
-    parseJSON _ = fail "Expected object, text or array"
+    parseJSON = withText "Expected object, text or array" $ return . cmdFromString
 
 
 instance FromJSON Repo where
@@ -174,9 +166,26 @@ let dropPrefix p t = fromMaybe t $ stripPrefix p t
     join <$> sequence
         [ deriveJSON (prefixOpts "commitData" ) ''CommitData
         , deriveJSON (prefixOpts "include") ''Include
-        , deriveJSON (prefixOpts "build"  ) ''Build
         , deriveJSON (prefixOpts "ping"   ) ''Ping
         , deriveJSON (prefixOpts "push"   ) ''Push
         , deriveJSON (prefixOpts "watch"  ) ''Watch
         , deriveJSON (prefixOpts "watchConf") ''WatchConf
         ]
+
+
+instance FromJSON Build where
+    parseJSON = withObject "expected object" $ \o -> Build
+        <$> o .: "command"
+        <*> o .:? "args" .!= mempty
+        <*> o .:? "target_dir" .!= "."
+        <*> o .:? "source_dir" .!= "."
+        <*> o .: "files"
+
+
+instance ToJSON Build where
+    toJSON b = object $
+        [ "command" .= (b^.command)
+        , "target_dir" .= (b^.targetDir)
+        , "source_dir" .= (b^.sourceDir)
+        , "files" .= (b^.files)
+        ] ++ if null (b^.args) then [] else [ "args" .= (b^.args) ]

@@ -31,6 +31,7 @@ import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8           as BS
 import qualified Data.ByteString.Lazy.Char8      as B
 import           Data.Char
+import           Data.Foldable                   (toList)
 import qualified Data.Foldable                   as F
 import           Data.Hashable
 import           Data.HashMap.Strict             (HashMap)
@@ -69,8 +70,8 @@ skipStrings = ["[skip build]", "[build skip]"]
 
 
 additionalCommandOptions :: Command -> [String]
-additionalCommandOptions (HtLatex _) = ["-halt-on-error", "-interaction=nonstopmode"]
-additionalCommandOptions (Pdflatex _) = ["-halt-on-error", "-interaction=nonstopmode"]
+additionalCommandOptions HtLatex = ["-halt-on-error", "-interaction=nonstopmode"]
+additionalCommandOptions Pdflatex = ["-halt-on-error", "-interaction=nonstopmode"]
 additionalCommandOptions _ = []
 
 
@@ -91,21 +92,20 @@ ensureTargetDir = liftIO . createDirectoryIfMissing True
 
 shellBuildWithRepeat :: Command -> CreateProcess -> Int -> LBuilder ()
 shellBuildWithRepeat command process repeats = do
-    res <- replicateM repeats (liftIO $ readCreateProcessWithExitCode process "")
+    res <- replicateM repeats (liftIO $ readCreateProcessWithExitCode process "") `catch` \e -> throwError $(isT "IOException: #{displayException (e :: IOException)}")
     case res ^? _last of
         Nothing -> throwError $(isT "Unexpected number of repeats: #{repeats}")
         Just (ExitSuccess, _, _) -> logDebugNS "build" $(isT "Successfully executed #{command}")
         Just (ExitFailure i, stdout, stderr) -> do
             let str = $(isT "Build failed with #{i} for command #{command}   (#{repeats} repeats)")
             logErrorNS "worker" str
-            logDebugNS "worker" (stderr^.packed)
+            logErrorNS "worker" (stderr^.packed)
             logDebugNS "worker" (stdout^.packed)
-            throwError str
 
 
 outputToDirectory :: Build -> FilePath -> [String]
-outputToDirectory b@Build{buildCommand=Hevea _} file = ["-o", b ^. targetDir </> file -<.> "html"]
-outputToDirectory Build{buildCommand=Custom _ _} _ = []
+outputToDirectory b@Build{buildCommand=Hevea} file = ["-o", b ^. targetDir </> file -<.> "html"]
+outputToDirectory Build{buildCommand=Custom _} _ = []
 outputToDirectory b _ = ["-output-directory", b ^. targetDir]
 
 
@@ -117,7 +117,7 @@ buildIt wd b file = do
     let process = proc (commandStr ^. unpacked)
             $ outputToDirectory (b & targetDir .~ absTargetDir) file
             ++ additionalCommandOptions (b^.command) ++ [file]
-            ++ map (^.unpacked) otherArgs
+            ++ toList (fmap (^.unpacked) otherArgs)
     shellBuildWithRepeat (b^.command) (process { cwd = Just $ wd </> b^.sourceDir }) repeats
   where
     commandStr = commandToStr $ b^.command
@@ -127,7 +127,7 @@ buildIt wd b file = do
     lookupFunc "file"             = Just $ file^.packed
     lookupFunc "workingDirectory" = Just $ wd^.packed
     lookupFunc _                  = Nothing
-    otherArgs = map f $ commandArgs $ b^.command
+    otherArgs = fmap f $ b^.args
     f arg = either (const arg) fst $ format arg lookupFunc
 
 
