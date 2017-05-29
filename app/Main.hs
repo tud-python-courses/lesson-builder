@@ -7,10 +7,12 @@ Maintainer  : dev@justus.science
 Stability   : experimental
 Portability : portable
 -}
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TemplateHaskell   #-}
 module Main where
 
 import           Control.Concurrent.Async.Lifted
@@ -22,20 +24,22 @@ import           Data.Monoid                     ((<>))
 import qualified Data.Text.IO                    as T
 import qualified Data.Text.Lazy                  as L
 import qualified Data.Text.Lazy.Encoding         as L
+import           Development.GitRev
 import           Lens.Micro
 import           LessonBuilder
 import           LessonBuilder.Serialize
 import           LessonBuilder.Types
+import           Marvin.Interpolate
 import           Network.HTTP.Types
 import           Network.Wai
 import           Network.Wai.Handler.Warp
 import           Options.Applicative
 import           System.Directory
 
-
-data Opts = Opts { watchConf   :: FilePath
-                 , port        :: Int
-                 , logLevel    :: LogLevel
+data Opts = Opts { watchConf    :: FilePath
+                 , port         :: Int
+                 , logLevel     :: LogLevel
+                 , printVersion :: Bool
                  }
 
 
@@ -68,6 +72,9 @@ optsParser = info (helper <*> struct) frame
                 <> short 'v'
                 <> help "log warnings in addition to errors")
             )
+        <*> switch
+            (  long "version"
+            <> help "print the version and exit")
 
 
 
@@ -97,10 +104,17 @@ app confLocation setLevel request respond =
 main :: IO ()
 main = do
     Opts{..} <- execParser optsParser
-    raw <- readConf watchConf
-    case raw of
-        Left err -> T.putStrLn err
-        Right conf -> do
-            maybe (return ()) (createDirectoryIfMissing True) (conf^.dataDirectory)
-            run port $ app watchConf logLevel
+    if printVersion
+        then
+            let v = VERSION_lesson_builder
+                gb = $gitBranch
+                gh = $gitHash
+            in T.putStrLn $(is "lesson-builder, version #{v}, git revision #{gh}@#{gb}")
+        else do
+            raw <- readConf watchConf
+            case raw of
+                Left err -> T.putStrLn err
+                Right conf -> do
+                    maybe (return ()) (createDirectoryIfMissing True) (conf^.dataDirectory)
+                    run port $ app watchConf logLevel
 

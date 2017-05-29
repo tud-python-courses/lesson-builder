@@ -4,3 +4,5 @@ packages:
 - '.'
 - '../simple-text-format'
 resolver: lts-8.10
+docker:
+  enable: true

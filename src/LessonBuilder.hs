@@ -5,8 +5,7 @@ Copyright   : (c) Justus Adam 2017.
 License     : MIT
 Maintainer  : dev@justus.science
 Stability   : experimental
-Portability : portable
--}
+§-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -109,6 +108,14 @@ outputToDirectory Build{buildCommand=Custom _} _ = []
 outputToDirectory b _ = ["-output-directory", b ^. targetDir]
 
 
+repeatsFromCommand :: Command -> Int
+repeatsFromCommand HtLatex  = 2
+repeatsFromCommand Pdflatex = 2
+repeatsFromCommand Hevea    = 2
+repeatsFromCommand Xelatex  = 2
+repeatsFromCommand _        = 1
+
+
 buildIt :: FilePath -> Build -> String -> LBuilder ()
 buildIt wd b file = do
     logDebugNS "worker" $(isT "Executing #{b^.command} in #{b^.sourceDir} to #{b^.targetDir}")
@@ -118,10 +125,10 @@ buildIt wd b file = do
             $ outputToDirectory (b & targetDir .~ absTargetDir) file
             ++ additionalCommandOptions (b^.command) ++ [file]
             ++ toList (fmap (^.unpacked) otherArgs)
-    shellBuildWithRepeat (b^.command) (process { cwd = Just $ wd </> b^.sourceDir }) repeats
+    shellBuildWithRepeat (b^.command) (process { cwd = Just $ wd </> b^.sourceDir }) repeats_
   where
     commandStr = commandToStr $ b^.command
-    repeats = 2
+    repeats_ = fromMaybe (repeatsFromCommand $ b^.command) $ b^.repeats
     lookupFunc "targetDir"        = Just $ b^.targetDir.packed
     lookupFunc "sourceDir"        = Just $ b^.sourceDir.packed
     lookupFunc "file"             = Just $ file^.packed

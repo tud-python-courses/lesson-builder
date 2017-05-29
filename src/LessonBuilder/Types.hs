@@ -61,6 +61,7 @@ data Build = Build
     , buildTargetDir :: !FilePath
     , buildSourceDir :: !FilePath
     , buildFiles     :: !(Vector FilePath)
+    , buildRepeats   :: Maybe Int
     }
 
 
@@ -180,6 +181,7 @@ instance FromJSON Build where
         <*> o .:? "target_dir" .!= "."
         <*> o .:? "source_dir" .!= "."
         <*> o .: "files"
+        <*> o .: "repeats"
 
 
 instance ToJSON Build where
@@ -188,4 +190,5 @@ instance ToJSON Build where
         , "target_dir" .= (b^.targetDir)
         , "source_dir" .= (b^.sourceDir)
         , "files" .= (b^.files)
+        , "repeats" .= (b^.repeats)
         ] ++ if null (b^.args) then [] else [ "args" .= (b^.args) ]

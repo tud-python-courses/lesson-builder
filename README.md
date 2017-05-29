@@ -2,7 +2,7 @@
 
 A collection of tools to update TeX repositories and run builds in parallel according to a build_conf.json file in the repository root.
 
-Also includes tools to handle a `push` github webhook to build on every push to a repository, configured via watch_config.json file.
+Also includes tools to handle a `push` github webhook to build on every push to a repository, configured via watch_conf.json file.
 
 ## Builder Usage
 
@@ -24,7 +24,7 @@ The builder will search in the curret directory for a `watch_conf.json` file (un
 {
     "builds": [ // array, required. The array of builds
         {
-            "command": "pdflatex", // several optinos, see #commands, required
+            "command": "pdflatex", // string, required. The command to run
             "args": ["-options"], // array of strings, see #args, optional
             "source_dir": "src", // string, optional. Where to find the source files
             "target_dir": "build", // string, optional. Where to put the output files
